@@ -1309,6 +1309,13 @@ export function createWorld(opts: WorldOptions): World {
     hasStandingPlayer,
     setWeather,
     setDrink,
+    findPersonByObject,
+    getPersonBySeat(seatId: string) {
+      const p = getPersonBySeat(seatId);
+      if (!p) return null;
+      return { name: p.name, avatar: 'casual_brown', mood: 'chill' };
+    },
+
 
     getWeather() {
       return currentWeather;

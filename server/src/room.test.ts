@@ -497,4 +497,51 @@ describe('khác', () => {
     const nextTrack = env.room.getCurrentRadio(START + 1000);
     expect(nextTrack.id).not.toBe(current.id);
   });
+
+  it('bàn cờ tướng 2 ghế (s15 & s16): chỉ 2 người ngồi ghế cờ mới đi quân được, người khác chỉ xem', () => {
+    const env = setup();
+    const red = client(env, 'Kỳ Thủ Đỏ');
+    const black = client(env, 'Kỳ Thủ Đen');
+    const spectator = client(env, 'Khách Xem Cờ');
+
+    // Khách ngồi ghế trà thường s01 thử đi quân -> bị chặn forbidden
+    spectator.send({ t: 'sit', seatId: 's01' });
+    spectator.send({ t: 'chessTableMove', from: [6, 0], to: [5, 0] });
+    expect(lastError(spectator)).toBe('forbidden');
+
+    // Mới chỉ có 1 người ngồi ghế Đỏ s15 -> chưa đủ 2 người nên chưa đi được
+    red.send({ t: 'sit', seatId: 's15' });
+    red.send({ t: 'chessTableMove', from: [6, 0], to: [5, 0] });
+    expect(lastError(red)).toBe('forbidden');
+
+    // Người thứ 2 ngồi vào ghế Đen s16 -> bắt đầu ván cờ
+    black.send({ t: 'sit', seatId: 's16' });
+
+    // Đen cố đi trước khi đang lượt Đỏ -> bị chặn forbidden
+    black.send({ t: 'chessTableMove', from: [3, 0], to: [4, 0] });
+    expect(lastError(black)).toBe('forbidden');
+
+    // Đỏ đi Tốt (6,0) -> (5,0) hợp lệ
+    red.send({ t: 'chessTableMove', from: [6, 0], to: [5, 0] });
+    const latestSpectatorTable = spectator.msgs
+      .filter((m): m is Extract<ServerMessage, { t: 'chessTable' }> => m.t === 'chessTable')
+      .pop();
+    expect(latestSpectatorTable).toBeDefined();
+    expect(latestSpectatorTable?.redName).toBe('Kỳ Thủ Đỏ');
+    expect(latestSpectatorTable?.blackName).toBe('Kỳ Thủ Đen');
+    expect(latestSpectatorTable?.board[5]?.[0]).toBe('r_p');
+    expect(latestSpectatorTable?.turn).toBe('black');
+
+    // Người xem bấm reset bàn cờ -> bị chặn forbidden
+    spectator.send({ t: 'chessTableReset' });
+    expect(lastError(spectator)).toBe('forbidden');
+
+    // Đen đi Tốt (3,0) -> (4,0) hợp lệ
+    black.send({ t: 'chessTableMove', from: [3, 0], to: [4, 0] });
+    const afterBlackMove = spectator.msgs
+      .filter((m): m is Extract<ServerMessage, { t: 'chessTable' }> => m.t === 'chessTable')
+      .pop();
+    expect(afterBlackMove?.board[4]?.[0]).toBe('b_p');
+    expect(afterBlackMove?.turn).toBe('red');
+  });
 });

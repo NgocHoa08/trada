@@ -159,7 +159,8 @@ export class RadioPlayer {
     if (!el) return;
     el.innerHTML = '';
     const iframe = document.createElement('iframe');
-    iframe.src = `https://www.youtube.com/embed/${videoId}?autoplay=${autoplay ? 1 : 0}&enablejsapi=1&start=${startSec}&rel=0`;
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    iframe.src = `https://www.youtube.com/embed/${encodeURIComponent(videoId)}?autoplay=${autoplay ? 1 : 0}&enablejsapi=1&origin=${encodeURIComponent(origin)}&start=${startSec}&rel=0`;
     iframe.style.width = '100%';
     iframe.style.height = '100%';
     iframe.style.border = '0';
@@ -174,6 +175,7 @@ export class RadioPlayer {
     if (!targetEl) return;
 
     try {
+      const origin = typeof window !== 'undefined' ? window.location.origin : undefined;
       this.player = new window.YT.Player(this.containerId, {
         height: '100%',
         width: '100%',
@@ -184,6 +186,7 @@ export class RadioPlayer {
           start: startSec,
           modestbranding: 1,
           rel: 0,
+          origin,
         },
         events: {
           onReady: (evt) => {

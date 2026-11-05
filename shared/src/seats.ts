@@ -41,14 +41,27 @@ function seatsAroundTable(table: TableDef, firstIndex: number): SeatDef[] {
   });
 }
 
-/** 14 chỗ ngồi: 12 chỗ quanh 3 bàn + 2 chỗ dọc mép vỉa hè nhìn ra đường. */
+/** 16 chỗ ngồi: 12 chỗ quanh 3 bàn + 2 chỗ mép vỉa hè + 2 chỗ bàn cờ tướng (s15 & s16). */
 export const SEATS: readonly SeatDef[] = [
   ...TABLES.flatMap((t, i) => seatsAroundTable(t, i * 4 + 1)),
   { id: 's13', x: -2.6, z: 3.0, rotY: 0, tableId: null },
   { id: 's14', x: 3, z: 3.0, rotY: 0, tableId: null },
+  { id: 's15', x: -6.8, z: -1.2, rotY: Math.PI, tableId: 't_chess' }, // Ghế cờ tướng bên Đỏ
+  { id: 's16', x: -6.8, z: -2.4, rotY: 0, tableId: 't_chess' }, // Ghế cờ tướng bên Đen
 ];
 
 export const SEAT_IDS: ReadonlySet<string> = new Set(SEATS.map((s) => s.id));
+
+/** Hai ghế của bàn cờ tướng: chỉ người ngồi ở đây mới được đi quân, ai khác bấm vào chỉ được xem. */
+export const CHESS_SEAT_RED = 's15';
+export const CHESS_SEAT_BLACK = 's16';
+
+/** Màu quân tương ứng với ghế cờ, null nếu không phải ghế cờ. */
+export function chessColorOfSeat(seatId: string | null | undefined): 'red' | 'black' | null {
+  if (seatId === CHESS_SEAT_RED) return 'red';
+  if (seatId === CHESS_SEAT_BLACK) return 'black';
+  return null;
+}
 
 /** Hai ghế "ngồi cạnh" nhau nếu khác nhau và cách ≤ NEIGHBOR_DISTANCE mét. Dùng cho đãi trà. */
 export function areNeighbors(a: string, b: string): boolean {

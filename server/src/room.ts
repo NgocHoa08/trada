@@ -1,10 +1,15 @@
 import {
   areNeighbors,
   CHAT_COOLDOWN_MS,
+  CHESS_SEAT_BLACK,
+  CHESS_SEAT_RED,
+  chessColorOfSeat,
   DEFAULT_ADMIN_PASS,
   DEFAULT_PLAYLIST,
   determineRpsWinner,
+  getInitialXiangqiBoard,
   getRound,
+  isLegalXiangqiMove,
   isUuid,
   MSG_BURST,
   NAME_MAX,
@@ -67,11 +72,29 @@ export class Room {
   private defaultTrackStartedAt: number | null = null;
   private isRadioPaused = false;
   private lastTrackEndedAt = 0;
-  private readonly rpsGames = new Map<
+  private readonly games = new Map<
     string,
-    { p1: Session; p2: Session; p1Choice: RpsChoice | null; p2Choice: RpsChoice | null; createdAt: number }
+    {
+      id: string;
+      type: 'rps' | 'xiangqi';
+      p1: Session;
+      p2: Session;
+      p1Choice: RpsChoice | null;
+      p2Choice: RpsChoice | null;
+      status: 'pending' | 'active';
+      turn: 'red' | 'black';
+      createdAt: number;
+    }
   >();
 
+  // ---------- Bàn cờ tướng vỉa hè (2 ghế s15/s16, server giữ thế cờ) ----------
+  private chessBoard: string[][] = getInitialXiangqiBoard();
+  private chessTurn: 'red' | 'black' = 'red';
+  private chessLastMove: { from: [number, number]; to: [number, number] } | null = null;
+  private chessWinner: 'red' | 'black' | null = null;
+  /** userId người đang cầm quân Đỏ/Đen; đổi người thì ván cờ bắt đầu lại. */
+  private chessRedId: string | null = null;
+  private chessBlackId: string | null = null;
 
   constructor(private readonly deps: RoomDeps) {
     const now = deps.now();
@@ -180,6 +203,7 @@ export class Room {
       queue: radioQueue as RadioItem[],
       isPaused: this.isRadioPaused,
     });
+    this.safeSend(conn, this.chessTableMsg());
     if (session.seatId) this.broadcast({ t: 'seatChanged', seat: this.seatState(session.seatId) });
     this.broadcast({ t: 'online', online: this.online });
     return session;
@@ -199,6 +223,7 @@ export class Room {
     if (this.seatOwner.get(seatId) === session) this.seatOwner.delete(seatId);
     this.treated.delete(seatId);
     this.broadcast({ t: 'seatChanged', seat: this.seatState(seatId) });
+    if (chessColorOfSeat(seatId)) this.syncChessPlayers();
   }
 
   /** Gọi mỗi giây: tính thời gian ngồi cho người đang ngồi, dọn stale sessions, chốt tuần trà. */
@@ -310,21 +335,26 @@ export class Room {
       case 'trackEnded':
         return this.onTrackEnded(s, msg.videoId, now);
       case 'rpsInvite':
-        return this.onRpsInvite(s, msg.targetSeatId, now);
+        return this.onGameInvite(s, msg.targetSeatId, 'rps', now);
+      case 'xiangqiInvite':
+        return this.onGameInvite(s, msg.targetSeatId, 'xiangqi', now);
+      case 'gameInvite':
+        return this.onGameInvite(s, msg.targetSeatId, msg.gameType, now);
+      case 'gameAccept':
+        return this.onGameAccept(s, msg.gameId);
+      case 'gameDecline':
+        return this.onGameDecline(s, msg.gameId);
       case 'rpsMove':
         return this.onRpsMove(s, msg.gameId, msg.choice);
-      case 'treatAll':
-        return this.onTreatAll(s);
-      case 'postLetter':
-        return this.onPostLetter(s, msg.text, now);
-      case 'drawLetter':
-        return this.onDrawLetter(s);
-      case 'getGuestbook':
-        return this.onGetGuestbook(s);
-      case 'signGuestbook':
-        return this.onSignGuestbook(s, msg.text, now);
-      case 'xiangqiInvite':
-        return this.onXiangqiInvite(s, msg.targetSeatId);
+      case 'chessMove':
+        return this.onChessMove(s, msg.gameId, msg.from, msg.to, msg.piece);
+      case 'chessTableMove':
+        return this.onChessTableMove(s, msg.from, msg.to);
+      case 'chessTableReset':
+        return this.onChessTableReset(s);
+      case 'claimCoins':
+        return this.onClaimCoins(s, msg.amount, now);
+
 
 
       case 'join':
@@ -350,6 +380,7 @@ export class Room {
     s.seatId = seatId;
     this.seatOwner.set(seatId, s);
     this.broadcast({ t: 'seatChanged', seat: this.seatState(seatId) });
+    if (chessColorOfSeat(seatId)) this.syncChessPlayers();
   }
 
   private onReact(
@@ -667,49 +698,81 @@ export class Room {
     });
   }
 
-  private onRpsInvite(s: Session, targetSeatId: string, now: number): void {
+  private onGameInvite(s: Session, targetSeatId: string, gameType: 'rps' | 'xiangqi', now: number): void {
     const targetSession = this.seatOwner.get(targetSeatId);
     if (!targetSession || targetSession === s) {
       return this.fail(s, 'bad_target', 'Không tìm thấy người ngồi ở ghế này để thách đấu.');
     }
 
     const gameId = this.deps.newId();
-    this.rpsGames.set(gameId, {
+    this.games.set(gameId, {
+      id: gameId,
+      type: gameType,
       p1: s,
       p2: targetSession,
       p1Choice: null,
       p2Choice: null,
+      status: 'pending',
+      turn: 'red',
       createdAt: now,
     });
 
-    this.safeSend(targetSession.conn, {
-      t: 'rpsInvited',
+    this.safeSend(s.conn, {
+      t: 'gameInviteSent',
       gameId,
-      fromName: s.user.name,
-      fromSeatId: s.seatId ?? '',
+      gameType,
+      toName: targetSession.user.name,
+      toSeatId: targetSeatId,
     });
-  }
-  private onXiangqiInvite(s: Session, targetSeatId: string): void {
-    const targetSession = this.seatOwner.get(targetSeatId);
-    if (!targetSession || targetSession === s) {
-      return this.fail(s, 'bad_target', 'Không tìm thấy người ngồi ở ghế này để mời chơi cờ.');
-    }
+
     this.safeSend(targetSession.conn, {
-      t: 'xiangqiInvited',
+      t: 'gameInvited',
+      gameId,
+      gameType,
       fromName: s.user.name,
       fromSeatId: s.seatId ?? '',
     });
   }
 
+  private onGameAccept(s: Session, gameId: string): void {
+    const game = this.games.get(gameId);
+    if (!game || game.p2 !== s || game.status !== 'pending') return;
+    game.status = 'active';
+
+    const startMsg: ServerMessage = {
+      t: 'gameStarted',
+      gameId,
+      gameType: game.type,
+      p1Name: game.p1.user.name,
+      p2Name: game.p2.user.name,
+      p1SeatId: game.p1.seatId ?? '',
+      p2SeatId: game.p2.seatId ?? '',
+    };
+    this.safeSend(game.p1.conn, startMsg);
+    this.safeSend(game.p2.conn, startMsg);
+  }
+
+  private onGameDecline(s: Session, gameId: string): void {
+    const game = this.games.get(gameId);
+    if (!game || game.p2 !== s) return;
+    this.safeSend(game.p1.conn, {
+      t: 'gameDeclined',
+      gameId,
+      byName: s.user.name,
+    });
+    this.games.delete(gameId);
+  }
 
   private onRpsMove(s: Session, gameId: string, choice: RpsChoice): void {
-    const game = this.rpsGames.get(gameId);
-    if (!game) return;
+    const game = this.games.get(gameId);
+    if (!game || game.type !== 'rps' || game.status !== 'active') return;
 
     if (game.p1 === s) {
       game.p1Choice = choice;
+      this.safeSend(game.p2.conn, { t: 'rpsOpponentMoved', gameId, opponentName: game.p1.user.name });
     } else if (game.p2 === s) {
       game.p2Choice = choice;
+      this.safeSend(game.p1.conn, { t: 'rpsOpponentMoved', gameId, opponentName: game.p2.user.name });
     } else {
       return;
     }
@@ -736,9 +799,112 @@ export class Room {
         opponentName: game.p1.user.name,
       });
 
-      this.rpsGames.delete(gameId);
+      // Reset choices để cả hai tiếp tục chơi các ván sau cùng nhau
+      game.p1Choice = null;
+      game.p2Choice = null;
     }
   }
+
+  private onChessMove(s: Session, gameId: string, from: [number, number], to: [number, number], piece: string): void {
+    const game = this.games.get(gameId);
+    if (!game || game.type !== 'xiangqi' || game.status !== 'active') return;
+
+    const isP1 = game.p1 === s;
+    const isP2 = game.p2 === s;
+    // Người ngoài ván (người xem) không được đi quân
+    if (!isP1 && !isP2) return;
+    if ((isP1 && game.turn !== 'red') || (isP2 && game.turn !== 'black')) return;
+
+    game.turn = game.turn === 'red' ? 'black' : 'red';
+    const moveMsg: ServerMessage = {
+      t: 'chessMoved',
+      gameId,
+      from,
+      to,
+      piece,
+      turn: game.turn,
+    };
+    this.safeSend(game.p1.conn, moveMsg);
+    this.safeSend(game.p2.conn, moveMsg);
+  }
+  // ---------- Bàn cờ tướng vỉa hè ----------
+
+  private chessTableMsg(): ServerMessage {
+    return {
+      t: 'chessTable',
+      redName: this.seatOwner.get(CHESS_SEAT_RED)?.user.name ?? null,
+      blackName: this.seatOwner.get(CHESS_SEAT_BLACK)?.user.name ?? null,
+      board: this.chessBoard.map((row) => [...row]),
+      turn: this.chessTurn,
+      lastMove: this.chessLastMove,
+      winner: this.chessWinner,
+    };
+  }
+
+  private resetChessBoard(): void {
+    this.chessBoard = getInitialXiangqiBoard();
+    this.chessTurn = 'red';
+    this.chessLastMove = null;
+    this.chessWinner = null;
+  }
+
+  /** Gọi khi ghế cờ đổi người: người cầm quân khác đi thì bắt đầu ván mới. Luôn phát trạng thái mới. */
+  private syncChessPlayers(): void {
+    const redId = this.seatOwner.get(CHESS_SEAT_RED)?.userId ?? null;
+    const blackId = this.seatOwner.get(CHESS_SEAT_BLACK)?.userId ?? null;
+    if (redId !== this.chessRedId || blackId !== this.chessBlackId) {
+      this.chessRedId = redId;
+      this.chessBlackId = blackId;
+      this.resetChessBoard();
+    }
+    this.broadcast(this.chessTableMsg());
+  }
+
+  private onChessTableMove(s: Session, from: [number, number], to: [number, number]): void {
+    const color = chessColorOfSeat(s.seatId);
+    if (!color) return this.fail(s, 'forbidden', 'Bạn đang xem cờ. Ngồi vào ghế bàn cờ mới được đi quân.');
+    if (!this.seatOwner.has(CHESS_SEAT_RED) || !this.seatOwner.has(CHESS_SEAT_BLACK)) {
+      return this.fail(s, 'forbidden', 'Chờ đủ 2 người ngồi vào bàn cờ đã.');
+    }
+    if (this.chessWinner) return this.fail(s, 'forbidden', 'Ván cờ đã kết thúc, bấm "Ván mới" để chơi tiếp.');
+    if (color !== this.chessTurn) return this.fail(s, 'forbidden', 'Chưa đến lượt bạn.');
+
+    const piece = this.chessBoard[from[0]]?.[from[1]] ?? '';
+    if (!piece || !isLegalXiangqiMove(this.chessBoard, from, to, piece, color)) {
+      return this.fail(s, 'bad_message', 'Nước đi không đúng luật.');
+    }
+
+    const captured = this.chessBoard[to[0]]![to[1]];
+    this.chessBoard[to[0]]![to[1]] = piece;
+    this.chessBoard[from[0]]![from[1]] = '';
+    this.chessLastMove = { from, to };
+    // Ăn được Tướng thì thắng (luật vỉa hè đơn giản, không xét chiếu bí)
+    if (captured === 'r_k' || captured === 'b_k') this.chessWinner = color;
+    else this.chessTurn = color === 'red' ? 'black' : 'red';
+    this.broadcast(this.chessTableMsg());
+  }
+
+  private onChessTableReset(s: Session): void {
+    if (!chessColorOfSeat(s.seatId)) {
+      return this.fail(s, 'forbidden', 'Chỉ 2 người đang ngồi bàn cờ mới được bày ván mới.');
+    }
+    this.resetChessBoard();
+    this.broadcast(this.chessTableMsg());
+  }
+
+  private onClaimCoins(s: Session, amount: number, now: number): void {
+    if (amount <= 0 || amount > 50) return;
+    this.deps.store.addCoins(s.userId, amount);
+    const stats = this.deps.store.getUserStats(s.userId, now);
+    this.safeSend(s.conn, {
+      t: 'coinsUpdated',
+      coins: stats.coins,
+      streak: stats.streak,
+      todayFullRounds: stats.todayFullRounds,
+      totalFullRounds: stats.totalFullRounds,
+    });
+  }
+
 
   private onTreatAll(s: Session): void {
     for (const seatId of SEAT_IDS) {

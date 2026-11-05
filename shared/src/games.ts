@@ -127,3 +127,157 @@ export const XIANGQI_PUZZLES: readonly XiangqiPuzzle[] = [
     hint: 'Mã nhảy ngọa tào chặn đường thoát của Tướng đối phương.',
   },
 ] as const;
+
+export const XIANGQI_PIECE_NAMES: Record<string, string> = {
+  r_k: '帥',
+  r_a: '仕',
+  r_b: '相',
+  r_n: '傌',
+  r_r: '俥',
+  r_c: '炮',
+  r_p: '兵',
+  b_k: '將',
+  b_a: '士',
+  b_b: '象',
+  b_n: '馬',
+  b_r: '車',
+  b_c: '砲',
+  b_p: '卒',
+};
+
+export function getInitialXiangqiBoard(): string[][] {
+  const b: string[][] = Array.from({ length: 10 }, () => Array.from({ length: 9 }, () => ''));
+  b[0] = ['b_r', 'b_n', 'b_b', 'b_a', 'b_k', 'b_a', 'b_b', 'b_n', 'b_r'];
+  b[2]![1] = 'b_c';
+  b[2]![7] = 'b_c';
+  b[3]![0] = 'b_p';
+  b[3]![2] = 'b_p';
+  b[3]![4] = 'b_p';
+  b[3]![6] = 'b_p';
+  b[3]![8] = 'b_p';
+
+  b[6]![0] = 'r_p';
+  b[6]![2] = 'r_p';
+  b[6]![4] = 'r_p';
+  b[6]![6] = 'r_p';
+  b[6]![8] = 'r_p';
+  b[7]![1] = 'r_c';
+  b[7]![7] = 'r_c';
+  b[9] = ['r_r', 'r_n', 'r_b', 'r_a', 'r_k', 'r_a', 'r_b', 'r_n', 'r_r'];
+  return b;
+}
+
+export function isLegalXiangqiMove(
+  board: string[][],
+  from: [number, number],
+  to: [number, number],
+  piece: string,
+  turn: 'red' | 'black',
+): boolean {
+  const [r1, c1] = from;
+  const [r2, c2] = to;
+
+  if (r1 === r2 && c1 === c2) return false;
+  if (r2 < 0 || r2 > 9 || c2 < 0 || c2 > 8) return false;
+
+  const color = piece[0]; // 'r' or 'b'
+  if ((turn === 'red' && color !== 'r') || (turn === 'black' && color !== 'b')) return false;
+
+  const target = board[r2]?.[c2] ?? '';
+  if (target && target[0] === color) return false;
+
+  const type = piece.slice(2); // 'k', 'a', 'b', 'n', 'r', 'c', 'p'
+  const dr = Math.abs(r1 - r2);
+  const dc = Math.abs(c1 - c2);
+
+  // 1. Tướng (King)
+  if (type === 'k') {
+    if (c2 < 3 || c2 > 5) return false;
+    if (color === 'r' && (r2 < 7 || r2 > 9)) return false;
+    if (color === 'b' && (r2 < 0 || r2 > 2)) return false;
+    return dr + dc === 1;
+  }
+
+  // 2. Sĩ (Advisor)
+  if (type === 'a') {
+    if (c2 < 3 || c2 > 5) return false;
+    if (color === 'r' && (r2 < 7 || r2 > 9)) return false;
+    if (color === 'b' && (r2 < 0 || r2 > 2)) return false;
+    return dr === 1 && dc === 1;
+  }
+
+  // 3. Tượng (Elephant)
+  if (type === 'b') {
+    if (color === 'r' && r2 < 5) return false; // Không qua sông
+    if (color === 'b' && r2 > 4) return false;
+    if (dr !== 2 || dc !== 2) return false;
+    const eyeR = (r1 + r2) / 2;
+    const eyeC = (c1 + c2) / 2;
+    return !board[eyeR]?.[eyeC];
+  }
+
+  // 4. Xe (Rook)
+  if (type === 'r') {
+    if (r1 !== r2 && c1 !== c2) return false;
+    return countPiecesBetween(board, from, to) === 0;
+  }
+
+  // 5. Pháo (Cannon)
+  if (type === 'c') {
+    if (r1 !== r2 && c1 !== c2) return false;
+    const between = countPiecesBetween(board, from, to);
+    if (!target) return between === 0;
+    return between === 1;
+  }
+
+  // 6. Mã (Knight)
+  if (type === 'n') {
+    if (!((dr === 2 && dc === 1) || (dr === 1 && dc === 2))) return false;
+    if (dr === 2) {
+      const blockR = r1 + (r2 - r1) / 2;
+      return !board[blockR]?.[c1];
+    }
+    const blockC = c1 + (c2 - c1) / 2;
+    return !board[r1]?.[blockC];
+  }
+
+  // 7. Tốt / Binh (Pawn)
+  if (type === 'p') {
+    if (color === 'r') {
+      if (r1 >= 5) {
+        // Chưa qua sông: chỉ tiến 1 bước
+        return r2 === r1 - 1 && c1 === c2;
+      }
+      // Đã qua sông: tiến 1 bước hoặc sang ngang 1 bước
+      return (r2 === r1 - 1 && c1 === c2) || (r1 === r2 && dc === 1);
+    }
+    // Quân đen
+    if (r1 <= 4) {
+      return r2 === r1 + 1 && c1 === c2;
+    }
+    return (r2 === r1 + 1 && c1 === c2) || (r1 === r2 && dc === 1);
+  }
+
+  return false;
+}
+
+function countPiecesBetween(board: string[][], from: [number, number], to: [number, number]): number {
+  const [r1, c1] = from;
+  const [r2, c2] = to;
+  let count = 0;
+  if (r1 === r2) {
+    const minC = Math.min(c1, c2) + 1;
+    const maxC = Math.max(c1, c2);
+    for (let c = minC; c < maxC; c++) {
+      if (board[r1]?.[c]) count++;
+    }
+  } else if (c1 === c2) {
+    const minR = Math.min(r1, r2) + 1;
+    const maxR = Math.max(r1, r2);
+    for (let r = minR; r < maxR; r++) {
+      if (board[r]?.[c1]) count++;
+    }
+  }
+  return count;
+}
+

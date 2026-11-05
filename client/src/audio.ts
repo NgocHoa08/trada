@@ -5,7 +5,6 @@
 
 export interface SoundVolumes {
   traffic: number;
-  insects: number;
   fan: number;
   rain: number;
   streetVendor: number;
@@ -18,14 +17,12 @@ export class AudioManager {
 
   // Nodes
   private trafficGain: GainNode | null = null;
-  private insectsGain: GainNode | null = null;
   private fanGain: GainNode | null = null;
   private rainGain: GainNode | null = null;
   private vendorTimer: number | null = null;
 
   public volumes: SoundVolumes = {
     traffic: 0.3,
-    insects: 0.2,
     fan: 0.2,
     rain: 0,
     streetVendor: 0.2,
@@ -48,16 +45,13 @@ export class AudioManager {
     // 1. Tiếng xe cộ vỉa hè (Low-pass filtered brown noise)
     this.trafficGain = this.createNoiseChannel('brown', 250, this.volumes.traffic);
 
-    // 2. Tiếng ve / côn trùng đêm (High-pass filtered white noise modulated)
-    this.insectsGain = this.createInsectsChannel(this.volumes.insects);
-
-    // 3. Tiếng quạt máy vù vù (Low-pass pink noise with subtle LFO)
+    // 2. Tiếng quạt máy vù vù (Low-pass pink noise with subtle LFO)
     this.fanGain = this.createNoiseChannel('pink', 180, this.volumes.fan);
 
-    // 4. Tiếng mưa rào (Band-pass noise)
+    // 3. Tiếng mưa rào (Band-pass noise)
     this.rainGain = this.createNoiseChannel('white', 800, this.volumes.rain);
 
-    // 5. Tiếng rao xa xa thỉnh thoảng ngân lên
+    // 4. Tiếng rao xa xa thỉnh thoảng ngân lên
     this.startVendorLoop();
   }
 
@@ -101,43 +95,6 @@ export class AudioManager {
     filter.connect(gain);
     gain.connect(ctx.destination);
     noise.start();
-
-    return gain;
-  }
-
-  private createInsectsChannel(initialVol: number): GainNode {
-    const ctx = this.ctx!;
-    const bufferSize = ctx.sampleRate * 2;
-    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < bufferSize; i++) {
-      data[i] = Math.random() * 2 - 1;
-    }
-
-    const noise = ctx.createBufferSource();
-    noise.buffer = buffer;
-    noise.loop = true;
-
-    const filter = ctx.createBiquadFilter();
-    filter.type = 'highpass';
-    filter.frequency.setValueAtTime(4500, ctx.currentTime);
-
-    // LFO tạo nhịp dế kêu ri ri
-    const lfo = ctx.createOscillator();
-    lfo.frequency.setValueAtTime(7, ctx.currentTime);
-    const lfoGain = ctx.createGain();
-    lfoGain.gain.setValueAtTime(0.5, ctx.currentTime);
-
-    const gain = ctx.createGain();
-    gain.gain.setValueAtTime(initialVol, ctx.currentTime);
-
-    noise.connect(filter);
-    filter.connect(gain);
-    lfo.connect(lfoGain);
-    gain.connect(ctx.destination);
-
-    noise.start();
-    lfo.start();
 
     return gain;
   }
@@ -238,8 +195,6 @@ export class AudioManager {
     const t = this.ctx.currentTime;
     if (key === 'traffic' && this.trafficGain) {
       this.trafficGain.gain.setValueAtTime(value, t);
-    } else if (key === 'insects' && this.insectsGain) {
-      this.insectsGain.gain.setValueAtTime(value, t);
     } else if (key === 'fan' && this.fanGain) {
       this.fanGain.gain.setValueAtTime(value, t);
     } else if (key === 'rain' && this.rainGain) {

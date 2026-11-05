@@ -39,23 +39,47 @@ canvas {
 .hud-toast {
   position: fixed;
   left: 50%;
-  bottom: max(24px, env(safe-area-inset-bottom));
-  transform: translate(-50%, 20px);
-  padding: 10px 16px;
-  border-radius: 12px;
-  background: rgba(30, 20, 12, 0.85);
-  color: #f6e7c3;
-  font-size: 15px;
+  top: max(80px, calc(env(safe-area-inset-top) + 70px));
+  transform: translate(-50%, -15px);
+  padding: 10px 20px;
+  border-radius: 999px;
+  background: rgba(26, 18, 12, 0.95);
+  border: 1px solid #ffd166;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  color: #ffd166;
+  font-weight: 700;
+  font-size: 14px;
   opacity: 0;
   transition:
     opacity 0.25s,
     transform 0.25s;
   pointer-events: none;
+  z-index: 99999;
 }
 
 .hud-toast.show {
   opacity: 1;
   transform: translate(-50%, 0);
+}
+
+.dock-action-btn {
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(30, 20, 12, 0.85);
+  color: #f6e7c3;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.dock-action-btn:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.15);
 }
 
 .hud-round {
@@ -256,7 +280,7 @@ canvas {
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  width: min(520px, calc(100vw - 24px));
+  width: min(680px, calc(100vw - 24px));
   z-index: 20;
 }
 .hud-dock[hidden] {
@@ -295,6 +319,9 @@ canvas {
   display: flex;
   gap: 8px;
   width: 100%;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
 }
 .story-form {
   display: flex;

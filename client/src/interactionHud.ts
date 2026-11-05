@@ -2,12 +2,15 @@ import {
   ACCESSORIES,
   ACHIEVEMENTS,
   AVATARS,
+  chessColorOfSeat,
   COLOR_FILTERS,
   DAILY_STREAK_REWARDS,
   DRINKS,
   getBossGreeting,
+  getInitialXiangqiBoard,
   getPatronLevel,
   getRandomFortune,
+  isLegalXiangqiMove,
   MAP_REGIONS,
   parseYouTubeUrl,
   PETS,
@@ -16,6 +19,7 @@ import {
   SEASONS,
   STORY_MAX,
   WEATHER_OPTIONS,
+  XIANGQI_PIECE_NAMES,
   XIANGQI_PUZZLES,
   type ColorFilter,
   type LeaderboardEntry,
@@ -24,6 +28,7 @@ import {
   type Reaction,
   type RpsChoice,
   type SeasonType,
+  type ServerMessage,
   type Story,
   type WeatherType,
 } from '@tdvh/shared';
@@ -69,13 +74,20 @@ export interface InteractionHud {
   setLetterDrawn(letter: { id: string; text: string; createdAt: number } | null): void;
   setGuestbook(entries: { id: string; name: string; avatar: string; text: string; createdAt: number }[]): void;
   openPlayerActionMenu(targetName: string, targetSeatId?: string): void;
+  handleGameInvite(gameId: string, gameType: 'rps' | 'xiangqi', fromName: string, fromSeatId: string): void;
+  handleGameStarted(gameId: string, gameType: 'rps' | 'xiangqi', p1Name: string, p2Name: string, myColor?: 'red' | 'black'): void;
+  handleGameDeclined(byName: string): void;
+  handleRpsOpponentMoved(opponentName: string): void;
+  handleChessMoved(from: [number, number], to: [number, number], piece: string, turn: 'red' | 'black'): void;
+  setChessTable(msg: Extract<ServerMessage, { t: 'chessTable' }>): void;
 
   setRadioQueue(queue: RadioItem[]): void;
   setRadioPlaying(current: RadioItem | null, isPaused?: boolean): void;
   setAdminStatus(isAdmin: boolean, message?: string): void;
   setWeather(weather: WeatherType, mode: WeatherType | 'auto'): void;
   setTvMode(mode: '3d' | 'cinema' | 'pip'): void;
-  setTvModeParent(parent: HTMLElement): void;
+  getTvMode(): '3d' | 'cinema' | 'pip';
+
 }
 
 export interface HudCallbacks {
@@ -112,6 +124,15 @@ export interface HudCallbacks {
   onCapturePolaroid?: () => string;
   onToggleBatterySaver?: () => boolean;
   onXiangqiInvite?: (targetSeatId: string) => void;
+  onGameInvite?: (targetSeatId: string, gameType: 'rps' | 'xiangqi') => void;
+  onGameAccept?: (gameId: string) => void;
+  onGameDecline?: (gameId: string) => void;
+  onChessMove?: (gameId: string, from: [number, number], to: [number, number], piece: string) => void;
+  onChessTableMove?: (from: [number, number], to: [number, number]) => void;
+  onChessTableReset?: () => void;
+  onClaimCoins?: (amount: number, reason: string) => void;
+
+
 
 }
 
@@ -135,7 +156,7 @@ export function createInteractionHud(root: HTMLElement, cb: HudCallbacks): Inter
 
   const weatherBadge = document.createElement('div');
   weatherBadge.className = 'hud-weather';
-  weatherBadge.textContent = '☀️ Nắng ráo';
+  weatherBadge.textContent = '🍂 Thu vàng phố cổ';
   weatherBadge.title = 'Bấm để đổi thời tiết quán';
 
   topBar.append(clock, onlineEl, walletBadge, weatherBadge);
@@ -336,21 +357,15 @@ export function createInteractionHud(root: HTMLElement, cb: HudCallbacks): Inter
     if (e.target === rankModal) rankModal.hidden = true;
   });
 
-  // ---------- Dock Màn hình TV liên kết YouTube (3D Vỉa Hè, Cinema mode, Mini Pip) ----------
+  // ---------- Dock Màn hình TV liên kết YouTube ----------
   const tvDock = document.createElement('div');
-  tvDock.className = 'tv-screen-dock tv-mode-3d';
+  tvDock.className = 'tv-screen-dock tv-mode-pip';
 
   const tvDockHeader = document.createElement('div');
   tvDockHeader.className = 'tv-dock-header';
 
   const tvDockActions = document.createElement('div');
   tvDockActions.className = 'tv-dock-actions';
-
-  const mode3dBtn = document.createElement('button');
-  mode3dBtn.className = 'tv-dock-btn active';
-  mode3dBtn.type = 'button';
-  mode3dBtn.textContent = '📺 TV Vỉa hè';
-  mode3dBtn.title = 'Chiếu trực tiếp lên chiếc TV 3D ngoài vỉa hè quán';
 
   const cinemaBtn = document.createElement('button');
   cinemaBtn.className = 'tv-dock-btn';
@@ -359,7 +374,7 @@ export function createInteractionHud(root: HTMLElement, cb: HudCallbacks): Inter
   cinemaBtn.title = 'Phóng to xem phim giữa màn hình';
 
   const pipBtn = document.createElement('button');
-  pipBtn.className = 'tv-dock-btn';
+  pipBtn.className = 'tv-dock-btn active';
   pipBtn.type = 'button';
   pipBtn.textContent = '📌 Góc nhỏ';
   pipBtn.title = 'Thu nhỏ dạng góc màn hình';
@@ -369,7 +384,7 @@ export function createInteractionHud(root: HTMLElement, cb: HudCallbacks): Inter
   openQueueBtn.type = 'button';
   openQueueBtn.textContent = '📋 Đặt phim/nhạc';
 
-  tvDockActions.append(mode3dBtn, cinemaBtn, pipBtn, openQueueBtn);
+  tvDockActions.append(cinemaBtn, pipBtn, openQueueBtn);
   tvDockHeader.append(tvDockActions);
 
   const playerContainer = document.createElement('div');
@@ -380,35 +395,36 @@ export function createInteractionHud(root: HTMLElement, cb: HudCallbacks): Inter
 
   tvDock.append(tvDockHeader, playerContainer);
 
-  let tv3dParent: HTMLElement | null = null;
-  let currentTvMode: '3d' | 'cinema' | 'pip' = '3d';
+  let currentTvMode: '3d' | 'cinema' | 'pip' = 'pip';
 
   function setTvMode(mode: '3d' | 'cinema' | 'pip'): void {
     currentTvMode = mode;
     tvDock.classList.remove('tv-mode-3d', 'tv-mode-cinema', 'tv-mode-pip', 'hidden');
-    mode3dBtn.classList.remove('active');
     cinemaBtn.classList.remove('active');
     pipBtn.classList.remove('active');
+
+    tvDock.style.left = '';
+    tvDock.style.top = '';
+    tvDock.style.right = '';
+    tvDock.style.bottom = '';
+    tvDock.style.width = '';
+    tvDock.style.height = '';
+    tvDock.style.transform = '';
 
     if (mode === 'cinema') {
       tvDock.classList.add('tv-mode-cinema');
       cinemaBtn.classList.add('active');
-      document.body.append(tvDock);
-    } else if (mode === 'pip') {
+    } else {
       tvDock.classList.add('tv-mode-pip');
       pipBtn.classList.add('active');
-      document.body.append(tvDock);
-    } else {
-      tvDock.classList.add('tv-mode-3d');
-      mode3dBtn.classList.add('active');
-      if (tv3dParent) {
-        tv3dParent.append(tvDock);
-      }
     }
   }
 
-  mode3dBtn.addEventListener('click', () => setTvMode('3d'));
-  cinemaBtn.addEventListener('click', () => setTvMode('cinema'));
+  if (typeof document !== 'undefined') {
+    document.body.append(tvDock);
+  }
+
+  cinemaBtn.addEventListener('click', () => setTvMode(currentTvMode === 'cinema' ? 'pip' : 'cinema'));
   pipBtn.addEventListener('click', () => setTvMode('pip'));
   openQueueBtn.addEventListener('click', () => {
     radioModal.hidden = false;
@@ -497,19 +513,10 @@ export function createInteractionHud(root: HTMLElement, cb: HudCallbacks): Inter
   const viewModeRow = document.createElement('div');
   viewModeRow.className = 'tv-quick-presets';
 
-  const dock3dBtn = document.createElement('button');
-  dock3dBtn.type = 'button';
-  dock3dBtn.className = 'tv-preset-chip';
-  dock3dBtn.textContent = '📺 Chiếu lên TV vỉa hè 3D';
-  dock3dBtn.addEventListener('click', () => {
-    setTvMode('3d');
-    radioModal.hidden = true;
-  });
-
   const dockCinemaBtn = document.createElement('button');
   dockCinemaBtn.type = 'button';
   dockCinemaBtn.className = 'tv-preset-chip';
-  dockCinemaBtn.textContent = '🔲 Mở rạp chiếu to (Cinema)';
+  dockCinemaBtn.textContent = '🔲 Mở rạp chiếu to (Cinema Mode)';
   dockCinemaBtn.addEventListener('click', () => {
     setTvMode('cinema');
     radioModal.hidden = true;
@@ -518,13 +525,13 @@ export function createInteractionHud(root: HTMLElement, cb: HudCallbacks): Inter
   const dockPipBtn = document.createElement('button');
   dockPipBtn.type = 'button';
   dockPipBtn.className = 'tv-preset-chip';
-  dockPipBtn.textContent = '📌 Ghim góc nhỏ (Picture-in-Picture)';
+  dockPipBtn.textContent = '📌 Ghim TV góc nhỏ (Picture-in-Picture)';
   dockPipBtn.addEventListener('click', () => {
     setTvMode('pip');
     radioModal.hidden = true;
   });
 
-  viewModeRow.append(dock3dBtn, dockCinemaBtn, dockPipBtn);
+  viewModeRow.append(dockCinemaBtn, dockPipBtn);
 
   function playUrl(url: string): void {
     let trimmed = url.trim();
@@ -541,12 +548,12 @@ export function createInteractionHud(root: HTMLElement, cb: HudCallbacks): Inter
       return;
     }
 
-    setTvMode('3d');
+    setTvMode('pip');
     cb.onPlayDirect?.(parsed.videoId, parsed.startSec);
     cb.onQueueSong(trimmed);
 
     radioModal.hidden = true;
-    toastEl.textContent = '🎬 Đang chiếu lên màn hình TV ngoài vỉa hè!';
+    toastEl.textContent = '🎬 Đang phát video trên TV quán!';
     toastEl.classList.add('show');
     window.clearTimeout(toastTimer);
     toastTimer = window.setTimeout(() => toastEl.classList.remove('show'), 2500);
@@ -676,7 +683,6 @@ export function createInteractionHud(root: HTMLElement, cb: HudCallbacks): Inter
 
   soundBody.append(
     makeSlider('🚗 Xe cộ phố phường', 0.3, (v) => cb.onVolumeChange('traffic', v)),
-    makeSlider('🦗 Ve & Côn trùng đêm', 0.2, (v) => cb.onVolumeChange('insects', v)),
     makeSlider('🌀 Quạt máy vỉa hè', 0.2, (v) => cb.onVolumeChange('fan', v)),
     makeSlider('🌧️ Mưa rào', 0, (v) => cb.onVolumeChange('rain', v)),
     makeSlider('🗣️ Tiếng rao xa xa', 0.2, (v) => cb.onVolumeChange('streetVendor', v)),
@@ -914,13 +920,15 @@ export function createInteractionHud(root: HTMLElement, cb: HudCallbacks): Inter
   });
 
   const standBtn = document.createElement('button');
-  standBtn.className = 'hud-stand';
+  standBtn.className = 'dock-action-btn';
+  standBtn.style.background = '#4a3b32';
+  standBtn.style.color = '#fff';
   standBtn.type = 'button';
   standBtn.textContent = 'Đứng dậy';
   standBtn.addEventListener('click', cb.onStand);
 
   const treatAllBtn = document.createElement('button');
-  treatAllBtn.className = 'hud-stand';
+  treatAllBtn.className = 'dock-action-btn';
   treatAllBtn.style.background = '#ffd166';
   treatAllBtn.style.color = '#1a1410';
   treatAllBtn.type = 'button';
@@ -930,7 +938,7 @@ export function createInteractionHud(root: HTMLElement, cb: HudCallbacks): Inter
   });
 
   const rpsBtn = document.createElement('button');
-  rpsBtn.className = 'hud-stand';
+  rpsBtn.className = 'dock-action-btn';
   rpsBtn.style.background = '#2ec4b6';
   rpsBtn.style.color = '#0b131a';
   rpsBtn.type = 'button';
@@ -986,6 +994,8 @@ export function createInteractionHud(root: HTMLElement, cb: HudCallbacks): Inter
       <div class="fortune-meaning">💡 <b>Lời bình:</b> ${f.meaning}</div>
       <div style="margin-top: 12px; font-size: 13px; color: #ffd166;">🪙 Bà Ba tặng bạn 1 đồng tiền lẻ may mắn ngày mới!</div>
     `;
+    cb.onClaimCoins?.(1, 'fortune');
+
     shakeFortuneBtn.textContent = '🎋 Lắc lại quẻ khác';
   });
 
@@ -1146,7 +1156,213 @@ export function createInteractionHud(root: HTMLElement, cb: HudCallbacks): Inter
     puzzleContainer.append(pCard);
   });
 
-  xiangqiCard.append(xiangqiHeader, xiangqiNotice, puzzleContainer);
+  let liveChessGameId: string | null = null;
+  let currentChessTurn: 'red' | 'black' = 'red';
+  let myChessColor: 'red' | 'black' = 'red';
+  let chessBoardState: string[][] = getInitialXiangqiBoard();
+  let selectedChessSquare: [number, number] | null = null;
+
+  // Bàn cờ vỉa hè cố định: 2 ghế s15 (Đỏ) / s16 (Đen). Server giữ thế cờ, client chỉ hiển thị.
+  // Người không ngồi 2 ghế đó chỉ được xem (tableMyColor = null).
+  let tableMyColor: 'red' | 'black' | null = null;
+  let tableRedName: string | null = null;
+  let tableBlackName: string | null = null;
+  let tableWinner: 'red' | 'black' | null = null;
+  let tableLastMove: { from: [number, number]; to: [number, number] } | null = null;
+  const isTableMode = (): boolean => liveChessGameId === null;
+
+  const chessToast = (text: string): void => {
+    toastEl.textContent = text;
+    toastEl.classList.add('show');
+    window.clearTimeout(toastTimer);
+    toastTimer = window.setTimeout(() => toastEl.classList.remove('show'), 2200);
+  };
+
+  const liveChessHeader = document.createElement('div');
+  liveChessHeader.style.cssText =
+    'display: flex; justify-content: space-between; align-items: center; gap: 8px; background: rgba(0,0,0,0.3); padding: 8px 12px; border-radius: 8px; margin-bottom: 8px; font-size: 13px; font-weight: 700;';
+  const chessInfo = document.createElement('div');
+  chessInfo.style.cssText = 'display: flex; flex-direction: column; gap: 3px;';
+  const chessPlayersLine = document.createElement('div');
+  const chessStatusLine = document.createElement('div');
+  chessInfo.append(chessPlayersLine, chessStatusLine);
+  const resetChessBtn = document.createElement('button');
+  resetChessBtn.type = 'button';
+  resetChessBtn.className = 'boss-action-btn';
+  resetChessBtn.style.cssText = 'padding: 4px 10px; font-size: 12px; white-space: nowrap;';
+  resetChessBtn.textContent = 'Ván mới 🔄';
+  liveChessHeader.append(chessInfo, resetChessBtn);
+
+  /** Tạo span tô màu, tên người dùng đi qua textContent nên không cần escape HTML. */
+  function colored(text: string, color: string): HTMLSpanElement {
+    const sp = document.createElement('span');
+    sp.style.color = color;
+    sp.textContent = text;
+    return sp;
+  }
+
+  function renderChessHeader(): void {
+    chessPlayersLine.replaceChildren();
+    chessStatusLine.replaceChildren();
+    if (isTableMode()) {
+      chessPlayersLine.append(
+        colored(`🔴 ${tableRedName ?? 'Ghế trống'}`, '#ff6b6b'),
+        document.createTextNode('  vs  '),
+        colored(`⚫ ${tableBlackName ?? 'Ghế trống'}`, '#e8e8e8'),
+      );
+      const full = tableRedName !== null && tableBlackName !== null;
+      let status: HTMLSpanElement;
+      if (tableWinner) {
+        status = colored(`🏆 Bên ${tableWinner === 'red' ? 'Đỏ' : 'Đen'} thắng!`, '#ffd166');
+      } else if (!full) {
+        status = colored('Chờ đủ 2 người ngồi vào 2 ghế cạnh bàn cờ…', '#aaa');
+      } else if (tableMyColor === currentChessTurn) {
+        status = colored('👉 LƯỢT BẠN', '#2ec4b6');
+      } else {
+        status = colored(`Lượt bên ${currentChessTurn === 'red' ? 'Đỏ' : 'Đen'}`, '#ddd');
+      }
+      const role = tableMyColor
+        ? colored(` · Bạn cầm quân ${tableMyColor === 'red' ? 'ĐỎ' : 'ĐEN'}`, '#ffd166')
+        : colored(' · 👀 Bạn đang xem', '#9ad1ff');
+      chessStatusLine.append(status, role);
+      resetChessBtn.style.display = tableMyColor ? '' : 'none';
+    } else {
+      const isMyTurn = currentChessTurn === myChessColor;
+      chessPlayersLine.append(
+        colored(`Bạn là ${myChessColor === 'red' ? 'ĐỎ' : 'ĐEN'}`, myChessColor === 'red' ? '#ff6b6b' : '#e8e8e8'),
+      );
+      chessStatusLine.append(
+        isMyTurn ? colored('👉 LƯỢT BẠN', '#2ec4b6') : colored('Chờ đối thủ…', '#aaa'),
+      );
+      resetChessBtn.style.display = '';
+    }
+  }
+
+  const chessBoardGrid = document.createElement('div');
+  chessBoardGrid.className = 'xiangqi-board-grid';
+  chessBoardGrid.style.cssText =
+    'display: grid; grid-template-columns: repeat(9, 1fr); gap: 2px; background: #cbb28b; border: 3px solid #6b4c35; border-radius: 8px; padding: 4px; max-width: 360px; margin: 8px auto; user-select: none;';
+
+  function renderChessBoard(): void {
+    chessBoardGrid.innerHTML = '';
+    renderChessHeader();
+    const spectating = isTableMode() && tableMyColor === null;
+
+    for (let r = 0; r < 10; r++) {
+      for (let c = 0; c < 9; c++) {
+        const sq = document.createElement('div');
+        const piece = chessBoardState[r]?.[c] ?? '';
+        const isSelected = selectedChessSquare && selectedChessSquare[0] === r && selectedChessSquare[1] === c;
+        const isRiver = r === 4 || r === 5;
+        const lm = isTableMode() ? tableLastMove : null;
+        const isLastMove =
+          lm !== null && ((lm.from[0] === r && lm.from[1] === c) || (lm.to[0] === r && lm.to[1] === c));
+
+        sq.style.cssText = `
+          aspect-ratio: 1;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 18px;
+          font-weight: 800;
+          border: 1px solid rgba(107, 76, 53, 0.4);
+          cursor: ${spectating ? 'default' : 'pointer'};
+          background: ${isSelected ? 'rgba(255, 209, 102, 0.6)' : isLastMove ? 'rgba(46, 196, 182, 0.35)' : isRiver ? '#b5cbaf' : 'transparent'};
+          border-radius: 4px;
+        `;
+
+        if (piece) {
+          const isRed = piece.startsWith('r');
+          const char = XIANGQI_PIECE_NAMES[piece] ?? piece;
+          sq.innerHTML = `<span style="display: inline-flex; width: 26px; height: 26px; align-items: center; justify-content: center; border-radius: 999px; background: ${isRed ? '#fff0f0' : '#222'}; color: ${isRed ? '#d32f2f' : '#fff'}; border: 2px solid ${isRed ? '#d32f2f' : '#555'}; box-shadow: 0 2px 4px rgba(0,0,0,0.3); font-size: 14px;">${char}</span>`;
+        }
+
+        sq.addEventListener('click', () => {
+          // Bàn cờ vỉa hè: người xem không được chạm quân, người chơi chỉ đi khi đủ người và đến lượt
+          if (isTableMode()) {
+            if (!tableMyColor) {
+              chessToast('👀 Bạn đang xem cờ. Ngồi vào 1 trong 2 ghế cạnh bàn cờ để chơi nhé.');
+              return;
+            }
+            if (tableRedName === null || tableBlackName === null) {
+              chessToast('Chờ đủ 2 người ngồi vào bàn cờ đã.');
+              return;
+            }
+            if (tableWinner) {
+              chessToast('Ván cờ đã kết thúc, bấm "Ván mới 🔄" để chơi tiếp.');
+              return;
+            }
+          }
+          const myColor = isTableMode() ? tableMyColor : myChessColor;
+          const enforce = isTableMode() || liveChessGameId !== null;
+
+          if (!selectedChessSquare) {
+            if (piece) {
+              const pieceColor = piece.startsWith('r') ? 'red' : 'black';
+              if (enforce && pieceColor !== myColor) {
+                chessToast(`Bạn chỉ được cầm quân ${myColor === 'red' ? 'Đỏ' : 'Đen'}!`);
+                return;
+              }
+              if (enforce && currentChessTurn !== myColor) {
+                chessToast('Chưa đến lượt của bạn! Đang chờ đối thủ đi nước.');
+                return;
+              }
+              selectedChessSquare = [r, c];
+              renderChessBoard();
+            }
+          } else {
+            const [fr, fc] = selectedChessSquare;
+            if (fr === r && fc === c) {
+              selectedChessSquare = null;
+              renderChessBoard();
+              return;
+            }
+            const movingPiece = chessBoardState[fr]?.[fc] ?? '';
+            if (!isLegalXiangqiMove(chessBoardState, [fr, fc], [r, c], movingPiece, currentChessTurn)) {
+              chessToast('Nước đi không đúng luật Cờ Tướng vỉa hè!');
+              selectedChessSquare = null;
+              renderChessBoard();
+              return;
+            }
+            selectedChessSquare = null;
+
+            if (isTableMode()) {
+              // Không tự đi trước: chờ server xác nhận rồi phát thế cờ mới cho cả quán
+              renderChessBoard();
+              cb.onChessTableMove?.([fr, fc], [r, c]);
+              return;
+            }
+
+            chessBoardState[r]![c] = movingPiece;
+            chessBoardState[fr]![fc] = '';
+            currentChessTurn = currentChessTurn === 'red' ? 'black' : 'red';
+            renderChessBoard();
+
+            if (liveChessGameId) {
+              cb.onChessMove?.(liveChessGameId, [fr, fc], [r, c], movingPiece);
+            }
+          }
+        });
+
+        chessBoardGrid.append(sq);
+      }
+    }
+  }
+
+  resetChessBtn.addEventListener('click', () => {
+    if (isTableMode()) {
+      if (tableMyColor) cb.onChessTableReset?.();
+      return;
+    }
+    chessBoardState = getInitialXiangqiBoard();
+    currentChessTurn = 'red';
+    selectedChessSquare = null;
+    renderChessBoard();
+  });
+
+  renderChessBoard();
+
+  xiangqiCard.append(xiangqiHeader, xiangqiNotice, liveChessHeader, chessBoardGrid, puzzleContainer);
   xiangqiModal.append(xiangqiCard);
   closeXiangqiBtn.addEventListener('click', () => (xiangqiModal.hidden = true));
   xiangqiModal.addEventListener('click', (e) => {
@@ -1210,6 +1426,60 @@ export function createInteractionHud(root: HTMLElement, cb: HudCallbacks): Inter
   rpsModal.addEventListener('click', (e) => {
     if (e.target === rpsModal) rpsModal.hidden = true;
   });
+  // ---------- Modal Lời Mời Thách Đấu (Khi nhận được lời mời từ bạn khác) ----------
+  const gameInviteModal = document.createElement('div');
+  gameInviteModal.className = 'stories-modal';
+  gameInviteModal.hidden = true;
+
+  const gameInviteCard = document.createElement('div');
+  gameInviteCard.className = 'stories-card';
+  gameInviteCard.style.maxWidth = '420px';
+
+  const gameInviteHeader = document.createElement('div');
+  gameInviteHeader.className = 'stories-header';
+  const gameInviteTitle = document.createElement('h3');
+  gameInviteTitle.textContent = '⚔️ Lời Mời Thách Đấu Vỉa Hè';
+  gameInviteHeader.append(gameInviteTitle);
+
+  const gameInviteBody = document.createElement('div');
+  gameInviteBody.style.padding = '14px 0';
+  gameInviteBody.style.textAlign = 'center';
+
+  let pendingInviteGameId = '';
+
+  const gameInviteActions = document.createElement('div');
+  gameInviteActions.style.display = 'flex';
+  gameInviteActions.style.gap = '10px';
+  gameInviteActions.style.marginTop = '14px';
+
+  const btnAcceptInvite = document.createElement('button');
+  btnAcceptInvite.className = 'boss-action-btn';
+  btnAcceptInvite.style.cssText = 'flex: 1; padding: 12px; background: #2ec4b6; color: #0b131a; font-weight: 800;';
+  btnAcceptInvite.textContent = '⚔️ Chấp nhận chơi ngay!';
+
+  const btnDeclineInvite = document.createElement('button');
+  btnDeclineInvite.className = 'boss-action-btn';
+  btnDeclineInvite.style.cssText = 'padding: 12px 18px; background: rgba(255,255,255,0.1); color: #fff;';
+  btnDeclineInvite.textContent = '✕ Từ chối';
+
+  btnAcceptInvite.addEventListener('click', () => {
+    gameInviteModal.hidden = true;
+    if (pendingInviteGameId) {
+      cb.onGameAccept?.(pendingInviteGameId);
+    }
+  });
+
+  btnDeclineInvite.addEventListener('click', () => {
+    gameInviteModal.hidden = true;
+    if (pendingInviteGameId) {
+      cb.onGameDecline?.(pendingInviteGameId);
+    }
+  });
+
+  gameInviteActions.append(btnAcceptInvite, btnDeclineInvite);
+  gameInviteCard.append(gameInviteHeader, gameInviteBody, gameInviteActions);
+  gameInviteModal.append(gameInviteCard);
+
 
 
   // Toast
@@ -1381,6 +1651,9 @@ export function createInteractionHud(root: HTMLElement, cb: HudCallbacks): Inter
       if (typeof localStorage !== 'undefined') {
         localStorage.setItem('tdvh_checkin_date', today);
       }
+      const curRew = DAILY_STREAK_REWARDS[Math.min(streakCount, 6)] ?? DAILY_STREAK_REWARDS[0]!;
+      cb.onClaimCoins?.(curRew.rewardCoins, 'daily_streak');
+
       claimBtn.textContent = '✅ Đã nhận quà hôm nay!';
       claimBtn.disabled = true;
       toastEl.textContent = '🎉 Điểm danh thành công! Bạn nhận được xu và phần quà ngày mới!';
@@ -1586,6 +1859,8 @@ export function createInteractionHud(root: HTMLElement, cb: HudCallbacks): Inter
     toastEl.classList.add('show');
     window.clearTimeout(toastTimer);
     toastTimer = window.setTimeout(() => toastEl.classList.remove('show'), 3000);
+    cb.onClaimCoins?.(5, 'donate_vip');
+
     hubUtil.modal.hidden = true;
   });
   secDonate.append(confirmDonateBtn);
@@ -1741,23 +2016,22 @@ export function createInteractionHud(root: HTMLElement, cb: HudCallbacks): Inter
   btnActRps.addEventListener('click', () => {
     playerActionModal.hidden = true;
     if (selectedTargetSeatId) {
-      cb.onRpsInvite?.(selectedTargetSeatId);
-      toastEl.textContent = `🎲 Đã gửi lời mời đấu Oẳn tù tì tới ${selectedTargetName}!`;
+      cb.onGameInvite?.(selectedTargetSeatId, 'rps');
+      toastEl.textContent = `⏳ Đã gửi lời mời thách đấu Oẳn tù tì tới ${selectedTargetName}! Đang chờ đối phương chấp nhận...`;
       toastEl.classList.add('show');
       window.clearTimeout(toastTimer);
-      toastTimer = window.setTimeout(() => toastEl.classList.remove('show'), 2500);
+      toastTimer = window.setTimeout(() => toastEl.classList.remove('show'), 3000);
     }
   });
 
   btnActXiangqi.addEventListener('click', () => {
     playerActionModal.hidden = true;
     if (selectedTargetSeatId) {
-      cb.onXiangqiInvite?.(selectedTargetSeatId);
-      xiangqiModal.hidden = false;
-      toastEl.textContent = `♟️ Đã gửi lời mời cờ tướng tới ${selectedTargetName}!`;
+      cb.onGameInvite?.(selectedTargetSeatId, 'xiangqi');
+      toastEl.textContent = `⏳ Đã gửi lời mời chơi Cờ tướng tới ${selectedTargetName}! Đang chờ đối phương chấp nhận...`;
       toastEl.classList.add('show');
       window.clearTimeout(toastTimer);
-      toastTimer = window.setTimeout(() => toastEl.classList.remove('show'), 2500);
+      toastTimer = window.setTimeout(() => toastEl.classList.remove('show'), 3000);
     }
   });
 
@@ -1802,6 +2076,8 @@ export function createInteractionHud(root: HTMLElement, cb: HudCallbacks): Inter
     xiangqiModal,
     rpsModal,
     playerActionModal,
+    gameInviteModal,
+
 
     hubShop.modal,
     hubGames.modal,
@@ -1882,8 +2158,10 @@ export function createInteractionHud(root: HTMLElement, cb: HudCallbacks): Inter
         last.width = width;
       }
     },
-    setSeated(seated) {
+    setSeated(seated, seatId) {
       actionDock.hidden = !seated;
+      tableMyColor = chessColorOfSeat(seated ? seatId : null);
+      renderChessBoard();
     },
     setStories(stories) {
       allStories.length = 0;
@@ -2096,13 +2374,80 @@ export function createInteractionHud(root: HTMLElement, cb: HudCallbacks): Inter
       guestbookModal.hidden = false;
     },
     openXiangqi() {
+      liveChessGameId = null;
+      selectedChessSquare = null;
+      renderChessBoard();
       xiangqiModal.hidden = false;
     },
-    handleRpsInvite(gameId: string, fromName: string) {
-      currentRpsGameId = gameId;
-      rpsResultBox.style.display = 'none';
-      rpsNotice.textContent = `🎲 ${fromName} đang thách đấu bạn một trận Oẳn tù tì vỉa hè! Hãy chọn đòn:`;
-      rpsModal.hidden = false;
+    handleRpsInvite(gameId: string, fromName: string, fromSeatId = '') {
+      this.handleGameInvite(gameId, 'rps', fromName, fromSeatId);
+    },
+
+    handleGameInvite(gameId: string, gameType: 'rps' | 'xiangqi', fromName: string, fromSeatId: string) {
+      pendingInviteGameId = gameId;
+      const gameLabel = gameType === 'rps' ? 'Oẳn Tù Tì (Kéo - Búa - Bao) ✊' : 'Cờ Tướng Vỉa Hè ♟️';
+      gameInviteBody.innerHTML = `
+        <div style="font-size: 40px; margin-bottom: 8px;">${gameType === 'rps' ? '✊' : '♟️'}</div>
+        <div style="font-size: 16px; color: #ffd166; font-weight: 700; margin-bottom: 4px;">${fromName}</div>
+        <div style="font-size: 13px; color: #aaa; margin-bottom: 8px;">(Đang ngồi ghế ${fromSeatId})</div>
+        <div style="font-size: 14px; color: #eee;">vừa thách đấu bạn một trận <b>${gameLabel}</b>!</div>
+      `;
+      gameInviteModal.hidden = false;
+    },
+    handleGameStarted(gameId: string, gameType: 'rps' | 'xiangqi', p1Name: string, p2Name: string, myColor?: 'red' | 'black') {
+      gameInviteModal.hidden = true;
+      playerActionModal.hidden = true;
+      toastEl.textContent = `⚔️ Trận đấu ${gameType === 'rps' ? 'Oẳn tù tì' : 'Cờ tướng'} giữa ${p1Name} và ${p2Name} đã bắt đầu!`;
+      toastEl.classList.add('show');
+      window.clearTimeout(toastTimer);
+      toastTimer = window.setTimeout(() => toastEl.classList.remove('show'), 2500);
+
+      if (gameType === 'rps') {
+        currentRpsGameId = gameId;
+        rpsNotice.textContent = `⚔️ ${p1Name} vs ${p2Name}: Hãy chọn đòn của bạn:`;
+        rpsResultBox.style.display = 'none';
+        rpsModal.hidden = false;
+      } else {
+        liveChessGameId = gameId;
+        myChessColor = (myColor === 'black' ? 'black' : 'red');
+
+        chessBoardState = getInitialXiangqiBoard();
+        currentChessTurn = 'red';
+        selectedChessSquare = null;
+        renderChessBoard();
+        xiangqiModal.hidden = false;
+      }
+    },
+    handleGameDeclined(byName: string) {
+      toastEl.textContent = `❌ ${byName} đã từ chối lời mời thách đấu.`;
+      toastEl.classList.add('show');
+      window.clearTimeout(toastTimer);
+      toastTimer = window.setTimeout(() => toastEl.classList.remove('show'), 2500);
+    },
+    handleRpsOpponentMoved(opponentName: string) {
+      rpsNotice.textContent = `🎲 ${opponentName} đã ra đòn bí mật! Hãy chọn đòn của bạn:`;
+    },
+    handleChessMoved(from: [number, number], to: [number, number], piece: string, turn: 'red' | 'black') {
+      chessBoardState[to[0]]![to[1]] = piece;
+      chessBoardState[from[0]]![from[1]] = '';
+      currentChessTurn = turn;
+      renderChessBoard();
+      toastEl.textContent = `♟️ Nước đi quân ${XIANGQI_PIECE_NAMES[piece] ?? piece}: Lượt bên ${turn === 'red' ? 'Đỏ' : 'Đen'}!`;
+      toastEl.classList.add('show');
+      window.clearTimeout(toastTimer);
+      toastTimer = window.setTimeout(() => toastEl.classList.remove('show'), 2000);
+    },
+    setChessTable(msg) {
+      tableRedName = msg.redName;
+      tableBlackName = msg.blackName;
+      tableWinner = msg.winner;
+      tableLastMove = msg.lastMove;
+      if (isTableMode()) {
+        chessBoardState = msg.board.map((row) => [...row]);
+        currentChessTurn = msg.turn;
+        selectedChessSquare = null;
+        renderChessBoard();
+      }
     },
     handleRpsResult(myChoice: RpsChoice, opponentChoice: RpsChoice, result: 'win' | 'lose' | 'draw', opponentName: string) {
       const myDef = RPS_CHOICES.find((c) => c.id === myChoice);
@@ -2111,7 +2456,12 @@ export function createInteractionHud(root: HTMLElement, cb: HudCallbacks): Inter
       rpsResultBox.innerHTML = `
         <div class="rps-result-title">${result === 'win' ? '🎉 BẠN THẮNG RỒI!' : result === 'lose' ? '😅 BẠN THUA RỒI!' : '🤝 HÒA NHAU!'}</div>
         <div>Bạn ra: <b>${myDef?.name ?? myChoice} ${myDef?.emoji ?? ''}</b> vs ${opponentName} ra: <b>${oppDef?.name ?? opponentChoice} ${oppDef?.emoji ?? ''}</b></div>
+        <button type="button" class="boss-action-btn btn-again" style="margin-top: 10px;">Chơi lại ván nữa 🔄</button>
       `;
+      rpsResultBox.querySelector('.btn-again')?.addEventListener('click', () => {
+        rpsResultBox.style.display = 'none';
+        rpsNotice.textContent = 'Ván mới: Hãy chọn Kéo - Búa - Bao:';
+      });
       currentRpsGameId = null;
       rpsModal.hidden = false;
     },
@@ -2162,11 +2512,8 @@ export function createInteractionHud(root: HTMLElement, cb: HudCallbacks): Inter
 
     tvDockElement: tvDock,
     setTvMode,
-    setTvModeParent(parent: HTMLElement) {
-      tv3dParent = parent;
-      if (currentTvMode === '3d') {
-        tv3dParent.append(tvDock);
-      }
+    getTvMode() {
+      return currentTvMode;
     },
   };
 }

@@ -98,6 +98,53 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       return isStr(m.text, 200) ? { t: 'signGuestbook', text: m.text } : null;
     case 'xiangqiInvite':
       return isSeatId(m.targetSeatId) ? { t: 'xiangqiInvite', targetSeatId: m.targetSeatId } : null;
+    case 'gameInvite':
+      return isSeatId(m.targetSeatId) && (m.gameType === 'rps' || m.gameType === 'xiangqi')
+        ? { t: 'gameInvite', targetSeatId: m.targetSeatId, gameType: m.gameType }
+        : null;
+    case 'gameAccept':
+      return typeof m.gameId === 'string' ? { t: 'gameAccept', gameId: m.gameId } : null;
+    case 'gameDecline':
+      return typeof m.gameId === 'string' ? { t: 'gameDecline', gameId: m.gameId } : null;
+    case 'chessMove':
+      return typeof m.gameId === 'string' &&
+        Array.isArray(m.from) &&
+        m.from.length === 2 &&
+        Array.isArray(m.to) &&
+        m.to.length === 2 &&
+        typeof m.piece === 'string'
+        ? {
+            t: 'chessMove',
+            gameId: m.gameId,
+            from: [Number(m.from[0]), Number(m.from[1])],
+            to: [Number(m.to[0]), Number(m.to[1])],
+            piece: m.piece,
+          }
+        : null;
+    case 'chessTableMove': {
+      const sq = (v: unknown): [number, number] | null =>
+        Array.isArray(v) &&
+        v.length === 2 &&
+        Number.isInteger(v[0]) &&
+        Number.isInteger(v[1]) &&
+        v[0] >= 0 &&
+        v[0] <= 9 &&
+        v[1] >= 0 &&
+        v[1] <= 8
+          ? [v[0] as number, v[1] as number]
+          : null;
+      const from = sq(m.from);
+      const to = sq(m.to);
+      return from && to ? { t: 'chessTableMove', from, to } : null;
+    }
+    case 'chessTableReset':
+      return { t: 'chessTableReset' };
+    case 'claimCoins':
+      return typeof m.amount === 'number' && m.amount > 0 && m.amount <= 50 && typeof m.reason === 'string'
+        ? { t: 'claimCoins', amount: m.amount, reason: m.reason }
+        : null;
+
+
 
 
 

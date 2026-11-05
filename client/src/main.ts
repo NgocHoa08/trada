@@ -1,15 +1,17 @@
 import * as THREE from 'three';
 import { MapControls } from 'three/addons/controls/MapControls.js';
-import { CSS3DRenderer, CSS3DObject } from 'three/addons/renderers/CSS3DRenderer.js';
+import { CSS3DRenderer } from 'three/addons/renderers/CSS3DRenderer.js';
 import {
   COLOR_FILTERS,
   getRound,
   getVnHour,
   getWeatherForRound,
   seatsForPref,
+  REACTIONS,
   SEATS,
   STORY_BUBBLE_MS,
   areNeighbors,
+  chessColorOfSeat,
   type Reaction,
   type ServerMessage,
   type WeatherType,
@@ -54,6 +56,8 @@ cssRenderer.domElement.style.zIndex = '15';
 app.append(cssRenderer.domElement);
 
 const world = createWorld({ mobile });
+world.setSeason('autumn');
+
 const userId = getOrCreateUserId();
 const radioPlayer = new RadioPlayer('yt-player-target');
 radioPlayer.onTrackEnded = (videoId) => {
@@ -96,15 +100,29 @@ const gameClient = new GameClient({
   onMessage(msg: ServerMessage) {
     switch (msg.t) {
       case 'welcome': {
-        // Cập nhật tất cả các ghế
+        const occupied = new Set<string>();
         for (const seat of msg.seats) {
           world.setOccupant(seat.seatId, seat.occupant);
           world.setTreated(seat.seatId, seat.treated);
+          if (seat.occupant) occupied.add(seat.seatId);
         }
         currentSeatId = msg.youSeatId;
         hud.setSeated(currentSeatId !== null, currentSeatId);
         hud.setOnline(msg.online);
         hud.setStories(msg.stories);
+
+        // Tự động ngồi vào ghế trà trống gần nhất (không tự chiếm 2 ghế bàn cờ tướng)
+        if (!currentSeatId && profile) {
+          const prefSeats = seatsForPref(profile.seatPref).filter((s) => !chessColorOfSeat(s.id));
+          const openSeat =
+            prefSeats.find((s) => !occupied.has(s.id)) ??
+            SEATS.find((s) => !chessColorOfSeat(s.id) && !occupied.has(s.id));
+          if (openSeat) {
+            currentSeatId = openSeat.id;
+            gameClient.send({ t: 'sit', seatId: openSeat.id });
+            hud.setSeated(true, openSeat.id);
+          }
+        }
         break;
       }
       case 'seatChanged': {
@@ -118,6 +136,10 @@ const gameClient = new GameClient({
       }
       case 'reaction': {
         world.playReaction(msg.fromSeatId, msg.kind, msg.toSeatId);
+        if (msg.toSeatId && msg.toSeatId === currentSeatId) {
+          const rDef = REACTIONS.find((r) => r.id === msg.kind);
+          hud.toast(`${rDef?.emoji ?? '✨'} Bạn bàn bên vừa gửi cảm xúc "${rDef?.label ?? msg.kind}" tới bạn!`);
+        }
         break;
       }
       case 'storyPosted': {
@@ -162,7 +184,7 @@ const gameClient = new GameClient({
         hud.setRadioQueue(msg.queue);
         hud.setRadioPlaying(msg.current, msg.isPaused);
         const title = msg.current ? (msg.current.id === 'default' ? 'Big Buck Bunny (Hoạt hình)' : 'Phim & Ca Nhạc Quán') : undefined;
-        world.setTvPlaying(!msg.isPaused && !!msg.current, title);
+        world.setTvPlaying(!msg.isPaused && !!msg.current, title, msg.current?.videoId);
         break;
       }
       case 'adminStatus': {
@@ -204,6 +226,37 @@ const gameClient = new GameClient({
         hud.openXiangqi();
         break;
       }
+      case 'gameInviteSent': {
+        hud.toast(`⏳ Đã gửi lời mời thách đấu tới ${msg.toName}! Đang chờ đối phương chấp nhận...`);
+        break;
+      }
+      case 'gameInvited': {
+        hud.handleGameInvite(msg.gameId, msg.gameType, msg.fromName, msg.fromSeatId);
+        break;
+      }
+      case 'gameStarted': {
+        const myName = profile?.name ?? '';
+        const myColor: 'red' | 'black' = myName === msg.p1Name ? 'red' : 'black';
+        hud.handleGameStarted(msg.gameId, msg.gameType, msg.p1Name, msg.p2Name, myColor);
+        break;
+      }
+      case 'gameDeclined': {
+        hud.handleGameDeclined(msg.byName);
+        break;
+      }
+      case 'rpsOpponentMoved': {
+        hud.handleRpsOpponentMoved(msg.opponentName);
+        break;
+      }
+      case 'chessMoved': {
+        hud.handleChessMoved(msg.from, msg.to, msg.piece, msg.turn);
+        break;
+      }
+      case 'chessTable': {
+        hud.setChessTable(msg);
+        break;
+      }
+
 
 
     }
@@ -321,6 +374,25 @@ const hud = createInteractionHud(app, {
   onXiangqiInvite(targetSeatId) {
     gameClient.send({ t: 'xiangqiInvite', targetSeatId });
   },
+  onGameInvite(targetSeatId, gameType) {
+    gameClient.send({ t: 'gameInvite', targetSeatId, gameType });
+  },
+  onGameAccept(gameId) {
+    gameClient.send({ t: 'gameAccept', gameId });
+  },
+  onGameDecline(gameId) {
+    gameClient.send({ t: 'gameDecline', gameId });
+  },
+  onChessMove(gameId, from, to, piece) {
+    gameClient.send({ t: 'chessMove', gameId, from, to, piece });
+  },
+  onChessTableMove(from, to) {
+    gameClient.send({ t: 'chessTableMove', from, to });
+  },
+  onChessTableReset() {
+    gameClient.send({ t: 'chessTableReset' });
+  },
+
 
   onTreatAll() {
     gameClient.send({ t: 'treatAll' });
@@ -336,6 +408,9 @@ const hud = createInteractionHud(app, {
   },
   onSignGuestbook(text) {
     gameClient.send({ t: 'signGuestbook', text });
+  },
+  onClaimCoins(amount, reason) {
+    gameClient.send({ t: 'claimCoins', amount, reason });
   },
   onSetDrink(drinkId) {
     world.setDrink(drinkId);
@@ -353,15 +428,16 @@ const hud = createInteractionHud(app, {
     }
   },
   onSetSeason(season) {
+    world.setSeason(season);
     if (season === 'spring') {
       world.setWeather('cloudy');
       hud.toast('🌸 Mùa Xuân: Hoa đào khoe sắc, mưa phùn ấm áp!');
     } else if (season === 'summer') {
       world.setWeather('sunny');
-      hud.toast('☀️ Mùa Hạ: Nắng vàng râm ran tiếng ve sầu!');
+      hud.toast('☀️ Mùa Hạ: Nắng vàng râm ran gió mát!');
     } else if (season === 'autumn') {
       world.setWeather('sunny');
-      hud.toast('🍂 Mùa Thu: Lá vàng rơi nhẹ, gió heo may thoang thoảng!');
+      hud.toast('🍂 Mùa Thu: Nắng vàng ấm áp, lá vàng rơi chao liệng trong gió!');
     } else {
       world.setWeather('cloudy');
       hud.toast('❄️ Mùa Đông: Se lạnh phố đông, bếp than hồng ấm cúng!');
@@ -402,17 +478,6 @@ const hud = createInteractionHud(app, {
 
 
 });
-// Gắn màn hình TV liên kết YouTube vào đúng chiếc TV 3D điền ô cửa giữa quán
-const tv3dWrapper = document.createElement('div');
-tv3dWrapper.className = 'tv-3d-wrapper';
-hud.setTvModeParent(tv3dWrapper);
-
-const tv3dObj = new CSS3DObject(tv3dWrapper);
-tv3dObj.position.set(0, 1.42, -5.99);
-tv3dObj.rotation.y = 0;
-tv3dObj.scale.set(3.6 / 800, 2.025 / 450, 1);
-cssScene.add(tv3dObj);
-
 
 let weatherMode: WeatherType | 'auto' = 'auto';
 let lastWeatherApplied: WeatherType | null = null;
@@ -674,6 +739,11 @@ canvas.addEventListener('pointerup', (e) => {
   gameClient.send({ t: 'sit', seatId: res.id });
   currentSeatId = res.id;
   hud.setSeated(true, res.id);
+  const chessSide = chessColorOfSeat(res.id);
+  if (chessSide) {
+    hud.toast(`♟️ Bạn vừa ngồi ghế cờ bên ${chessSide === 'red' ? 'Đỏ (đi trước)' : 'Đen'}!`);
+    hud.openXiangqi();
+  }
 });
 
 // ---------- Vòng lặp Render ----------
@@ -721,14 +791,4 @@ renderer.setAnimationLoop(() => {
 void showOnboarding(app).then((p) => {
   profile = p;
   gameClient.connect();
-
-  // Thử ngồi vào khu vực ưa thích
-  const preferred = seatsForPref(p.seatPref)[0] ?? SEATS[0];
-  if (preferred) {
-    setTimeout(() => {
-      gameClient.send({ t: 'sit', seatId: preferred.id });
-      currentSeatId = preferred.id;
-      hud.setSeated(true, preferred.id);
-    }, 300);
-  }
 });

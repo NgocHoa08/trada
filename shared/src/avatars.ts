@@ -105,8 +105,8 @@ export const SEAT_PREFS: readonly SeatPrefDef[] = [
 export function seatsForPref(pref: string): SeatDef[] {
   const tableId = pref === 'curb' ? null : pref;
   const list = SEATS.filter((s) => s.tableId === tableId);
-  // pref lạ thì coi như "chỗ nào cũng được"
-  return list.length > 0 ? list : [...SEATS];
+  // pref lạ thì coi như "chỗ uống trà nào cũng được" (trừ 2 ghế bàn cờ dành riêng cho kỳ thủ)
+  return list.length > 0 ? list : SEATS.filter((s) => s.tableId !== 't_chess');
 }
 
 /**

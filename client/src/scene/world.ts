@@ -7,6 +7,7 @@ import {
   SEATS,
   TABLES,
   type Reaction,
+  type SeasonType,
   type WeatherType,
 } from '@tdvh/shared';
 import { createCharacter, type Character } from './character';
@@ -59,11 +60,13 @@ export interface World {
   setWeather(weather: WeatherType): void;
   getWeather(): WeatherType;
   /** Cập nhật trạng thái chiếu phim/nhạc trực tiếp trên TV 3D vỉa hè */
-  setTvPlaying(playing: boolean, title?: string): void;
+  setTvPlaying(playing: boolean, title?: string, videoId?: string): void;
   /** Thay đổi loại đồ uống trong ly (trà đá, cà phê sữa, nước mía, trà chanh, nước sấu) */
   setDrink(drinkId: string): void;
   findPersonByObject(object: THREE.Object3D): { name: string; seatId: string | null } | null;
   getPersonBySeat(seatId: string): { name: string; avatar: string; mood: string } | null;
+  setSeason(season: SeasonType): void;
+
 
 
   /**
@@ -788,6 +791,48 @@ export function createWorld(opts: WorldOptions): World {
   const rainPoints = new THREE.Points(rainGeo, rainMat);
   rainPoints.visible = false;
   scene.add(rainPoints);
+  // Hệ thống lá vàng rơi mùa thu (Autumn Falling Leaves)
+  const LEAF_COUNT = 150;
+  const leafColors = [0xe5a93b, 0xd36833, 0xb84a28, 0xdf8a28];
+  const leafGeo = new THREE.PlaneGeometry(0.12, 0.16);
+  const leafMat = new THREE.MeshLambertMaterial({
+    side: THREE.DoubleSide,
+    transparent: true,
+    opacity: 0.9,
+  });
+  const leafMesh = new THREE.InstancedMesh(leafGeo, leafMat, LEAF_COUNT);
+  leafMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  leafMesh.visible = true;
+
+  interface FallingLeaf {
+    x: number;
+    y: number;
+    z: number;
+    rotX: number;
+    rotY: number;
+    rotZ: number;
+    speedY: number;
+    speedX: number;
+    swayPhase: number;
+  }
+
+  const leaves: FallingLeaf[] = Array.from({ length: LEAF_COUNT }, (_, i) => {
+    leafMesh.setColorAt(i, new THREE.Color(leafColors[i % leafColors.length]));
+    return {
+      x: -18 + Math.random() * 36,
+      y: 1 + Math.random() * 7,
+      z: -6 + Math.random() * 8,
+      rotX: Math.random() * Math.PI,
+      rotY: Math.random() * Math.PI,
+      rotZ: Math.random() * Math.PI,
+      speedY: 0.6 + Math.random() * 0.6,
+      speedX: 1.2 + Math.random() * 0.8,
+      swayPhase: Math.random() * Math.PI * 2,
+    };
+  });
+  if (leafMesh.instanceColor) leafMesh.instanceColor.needsUpdate = true;
+  scene.add(leafMesh);
+
 
   // Vòng sáng ghế trống
   const seatHitTargets: THREE.Object3D[] = [];
@@ -1257,6 +1302,13 @@ export function createWorld(opts: WorldOptions): World {
       sidewalkMat.color.setHex(0xa89985);
     }
 
+    if (currentSeason === 'autumn') {
+      skyColor.setHex(lerpColor(skyColor.getHex(), 0xf5d07a, 0.4));
+      sun.color.setHex(0xffdf88);
+      hemi.color.setHex(0xffe2a4);
+      hemi.intensity = s.hemiIntensity * 0.9;
+    }
+
     (scene.background as THREE.Color).copy(skyColor);
     (scene.fog as THREE.Fog).color.copy(skyColor);
 
@@ -1266,6 +1318,13 @@ export function createWorld(opts: WorldOptions): World {
 
     bulbMat.color.setHex(lerpColor(0x8a8a78, 0xffe0a0, s.lamp));
     lastHour = hour;
+  }
+
+  let currentSeason: SeasonType = 'autumn';
+  function setSeason(season: SeasonType): void {
+    currentSeason = season;
+    leafMesh.visible = season === 'autumn';
+    applySky(lastHour >= 0 ? lastHour : 12);
   }
 
   function setWeather(w: WeatherType): void {
@@ -1309,6 +1368,8 @@ export function createWorld(opts: WorldOptions): World {
     hasStandingPlayer,
     setWeather,
     setDrink,
+    setSeason,
+
     findPersonByObject,
     getPersonBySeat(seatId: string) {
       const p = getPersonBySeat(seatId);
@@ -1320,9 +1381,29 @@ export function createWorld(opts: WorldOptions): World {
     getWeather() {
       return currentWeather;
     },
-    setTvPlaying(playing: boolean, title?: string) {
+    setTvPlaying(playing: boolean, title?: string, videoId?: string) {
       tvIsPlaying = playing;
       if (title) tvTitleText = title;
+      if (videoId && typeof document !== 'undefined') {
+        const loader = new THREE.TextureLoader();
+        loader.crossOrigin = 'anonymous';
+        loader.load(
+          `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
+          (tex) => {
+            tex.colorSpace = THREE.SRGBColorSpace;
+            tvScreenMat.map = tex;
+            tvScreenMat.needsUpdate = true;
+          },
+          undefined,
+          () => {
+            tvScreenMat.map = tvRenderer.texture;
+            tvScreenMat.needsUpdate = true;
+          },
+        );
+      } else if (!playing) {
+        tvScreenMat.map = tvRenderer.texture;
+        tvScreenMat.needsUpdate = true;
+      }
     },
     update(dt, time, hour, roundProgress) {
       if (Math.abs(hour - lastHour) > 0.002) applySky(hour);
@@ -1359,6 +1440,29 @@ export function createWorld(opts: WorldOptions): World {
           rainPositions[idx + 2] = pz;
         }
         rainAttr.needsUpdate = true;
+      }
+
+      // Cập nhật lá vàng mùa thu rơi chao liệng trong gió
+      if (currentSeason === 'autumn') {
+        leaves.forEach((l, i) => {
+          l.y -= l.speedY * dt;
+          l.x += (l.speedX + Math.sin(time * 2 + l.swayPhase) * 0.6) * dt;
+          l.rotZ += 2.5 * dt;
+          l.rotX += 1.8 * dt;
+
+          if (l.y < 0.02 || l.x > 20) {
+            l.y = 5.5 + Math.random() * 3;
+            l.x = -20 + Math.random() * 10;
+            l.z = -6 + Math.random() * 8;
+          }
+
+          dummy.position.set(l.x, l.y, l.z);
+          dummy.rotation.set(l.rotX, l.rotY, l.rotZ);
+          dummy.scale.set(1, 1, 1);
+          dummy.updateMatrix();
+          leafMesh.setMatrixAt(i, dummy.matrix);
+        });
+        leafMesh.instanceMatrix.needsUpdate = true;
       }
 
       // Cập nhật người đi bộ vãng lai trên vỉa hè

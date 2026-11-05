@@ -1,10 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { SEATS, areNeighbors } from './seats';
+import { CHESS_SEAT_BLACK, CHESS_SEAT_RED, SEATS, areNeighbors, chessColorOfSeat } from './seats';
 
 describe('SEATS', () => {
-  it('có đúng 14 chỗ với id duy nhất', () => {
-    expect(SEATS).toHaveLength(14);
-    expect(new Set(SEATS.map((s) => s.id)).size).toBe(14);
+  it('có đúng 16 chỗ (12 ghế quanh 3 bàn + 2 ghế mép vỉa hè + 2 ghế bàn cờ tướng) với id duy nhất', () => {
+    expect(SEATS).toHaveLength(16);
+    expect(new Set(SEATS.map((s) => s.id)).size).toBe(16);
+  });
+
+  it('phân biệt đúng 2 ghế bàn cờ tướng (Đỏ & Đen)', () => {
+    expect(chessColorOfSeat(CHESS_SEAT_RED)).toBe('red');
+    expect(chessColorOfSeat(CHESS_SEAT_BLACK)).toBe('black');
+    expect(chessColorOfSeat('s01')).toBeNull();
+    expect(chessColorOfSeat(null)).toBeNull();
+    expect(areNeighbors(CHESS_SEAT_RED, CHESS_SEAT_BLACK)).toBe(true);
   });
 
   it('không có hai ghế chồng lên nhau', () => {

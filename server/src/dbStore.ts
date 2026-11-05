@@ -341,6 +341,12 @@ export class DatabaseStore {
     });
     return tx();
   }
+  /** Cộng tiền lẻ (điểm danh, bốc quẻ, ủng hộ quán). */
+  addCoins(userId: string, amount: number): void {
+    if (amount <= 0) return;
+    this.db.prepare('UPDATE users SET coins = coins + ? WHERE id = ?').run(amount, userId);
+  }
+
 
   // ---------- Khách quen của tuần (Bảng xếp hạng Top 10) ----------
 

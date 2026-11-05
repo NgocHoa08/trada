@@ -225,3 +225,36 @@ Các lựa chọn thiết kế không nêu trong `docs/SPEC.md`.
     3. 🎫 **Khách Quen (Nhóm 1)**: Điểm danh 7 ngày (Daily Streak Rewards), Cấp bậc khách quen (5 cấp độ), Thành tựu vỉa hè (8 huy hiệu), Tủ đồ thời trang & Thú cưng vỉa hè (Mèo mướp vàng, Chó mực, Chim chào mào), Bảng xếp hạng tuần & Phiếu ngồi.
     4. 🌍 **Không Gian (Nhóm 3)**: Đổi bản đồ 3 miền (Hà Nội, Sài Gòn, Hội An), Hệ thống 4 mùa (Xuân, Hạ, Thu, Đông), 5 bộ lọc màu phim hoài niệm (Retro 90s, Cyberpunk, Mưa chiều, Hoàng hôn, Tự nhiên), Góc nhìn FPV mắt người ngồi, Bảng âm thanh ASMR vỉa hè, Tiết kiệm pin (30 FPS).
     5. 💖 **Tiện Ích & Ủng Hộ (Nhóm 4 & Nhóm 5)**: Mời ly trà đá thật (Donate VietQR kèm vương miện VIP), Chụp ảnh Polaroid Check-In sống ảo (xuất file PNG có chữ ký hoài niệm), Đồng hồ học bài Pomodoro 25 phút, Đặt trà thật giao tận nhà (GrabFood/ShopeeFood), Thiệp mời bạn bè ghé quán.
+
+- **Tương Tác Trực Tiếp Khi Nhấp Chuột Vào Bất Kỳ Ai Trong Quán (`playerActionModal`)**:
+  - Raycast 3D phát hiện khi rê chuột vào nhân vật người chơi khác hoặc ghế đang có người ngồi: con trỏ tự động chuyển thành hình bàn tay (`pointer`).
+  - Nhấp chuột vào người đó sẽ mở ngay **Menu Tương tác Người chơi** riêng biệt gồm 4 hành động giao lưu tức thì:
+    1. ✊ **Thách đấu Oẳn Tù Tì**: Gửi lời mời Kéo - Búa - Bao trực tiếp đến người đó, hai bên cùng vào trận so tài.
+    2. ♟️ **Mời chơi Cờ Tướng vỉa hè**: Gửi lời mời cùng giải cờ thế và tự động mở bàn cờ tướng cho cả hai.
+    3. 🍵 **Đãi ly trà đá đặc biệt (1 xu)**: Tặng ly trà ngọc bích ấm áp cho người bạn này.
+    4. 🍻 **Cạn ly làm quen**: Nâng ly chúc sức khỏe gửi thẳng tới nhân vật đó.
+
+- **Khắc phục Triệt để Lỗi Không Nhìn Thấy Nhau & Quy trình Lời Mời Chơi 2 Người (Multiplayer)**:
+  - *Khắc phục lỗi không nhìn thấy nhau khi mở 2 tab*:
+    - Trước đây `userId` lưu cố định trong `localStorage`, khiến 2 tab trên cùng trình duyệt có chung 1 `userId` và server lập tức ngắt kết nối bản cũ (`replaced`). Đã tách `userId` theo `sessionStorage` riêng của từng tab (hỗ trợ thêm `?user=...`), giúp nhiều tab chạy song song mượt mà.
+    - Khi vào quán, client tự động quét trạng thái các ghế (`occupied`) và chọn chiếc ghế trống tốt nhất, tránh trường hợp 2 người tranh chấp cùng 1 ghế mặc định khiến người thứ 2 bị từ chối và không thể ngồi xuống.
+  - *Quy trình Lời mời Thách đấu & Chấp nhận 2 người (`gameInviteModal`)*:
+    - Khi người A bấm thách đấu (Oẳn tù tì hoặc Cờ tướng): người A nhận thông báo chờ, đồng thời người B hiện ngay **Modal Lời Mời Thách Đấu Vỉa Hè** giữa màn hình (`⚔️ Chấp nhận chơi ngay` hoặc `✕ Từ chối`).
+    - Khi người B bấm chấp nhận: cả hai người chơi đồng loạt bước vào trận đấu thời gian thực:
+      - **Oẳn Tù Tì**: Cả hai cùng chọn đòn, xem đối phương đã ra đòn hay chưa, và cùng nhìn thấy kết quả thắng/thua được công bố đồng thời.
+      - **Cờ Tướng 2 Người**: Bàn cờ tướng tương tác 10x9 mở ra trên cả 2 máy (người mời cầm quân Đỏ đi trước, người nhận cầm quân Đen đi sau), các nước đi đồng bộ realtime qua WebSocket.
+
+- **Khắc phục Lỗi UI Đè Nút, Hoàn Thiện Luật Cờ Tướng, Lá Vàng Mùa Thu & Đồng Bộ Tiền Lẻ**:
+  - *Sửa lỗi đè nút action dock & thông báo*: Tách các nút (`treatAllBtn`, `rpsBtn`, `standBtn`) khỏi class `position: fixed` cũ, đưa vào `.dock-action-btn` flexbox tự động co giãn. Đưa thông báo (`.hud-toast`) lên nổi ở góc trên màn hình, không bao giờ che khuất khung nhập chat hay các nút tương tác.
+  - *Xóa âm thanh côn trùng*: Đã gỡ bỏ hoàn toàn kênh âm thanh ve sầu / côn trùng đêm khỏi `AudioManager` và giao diện điều chỉnh âm lượng.
+  - *Mùa Thu & Lá rụng gió thổi 3D*: Bổ sung hệ thống 150 lá vàng mùa thu (`InstancedMesh`) chao liệng và bay lượn theo làn gió dọc vỉa hè khi chọn Mùa Thu (`autumn`), kết hợp ánh nắng vàng hoàng hôn thơ mộng.
+  - *Luật Cờ Tướng chuẩn & Kiểm soát lượt đi*: Xây dựng hàm kiểm tra nước đi hợp lệ (`isLegalXiangqiMove`) theo đúng luật Cờ Tướng vỉa hè (Tướng, Sĩ trong cung; Tượng không qua sông; Pháo phải có ngòi khi ăn; Mã bị cản chân; Tốt qua sông mới được đi ngang). Chỉ cho phép người chơi đi đúng lượt (Đỏ đi trước, Đen đi sau).
+  - *Oẳn Tù Tì chuẩn lượt*: Hai người chơi ra đòn bí mật, hiển thị trạng thái chờ và kết quả công bố đồng thời, bổ sung nút `Chơi lại ván nữa 🔄`.
+  - *Thông báo tương tác thời gian thực*: Khi có người chơi khác cạn ly, gửi cảm xúc, thách đấu hoặc đãi trà, màn hình người nhận lập tức hiển thị thông báo toast chi tiết.
+  - *Đồng bộ cộng tiền lẻ (Coins)*: Bổ sung tin nhắn `{ t: 'claimCoins' }` lên server để cộng dồn tiền lẻ thực tế khi điểm danh 7 ngày, bốc quẻ may mắn hoặc ủng hộ quán, lưu vào SQLite và cập nhật số dư trên thanh HUD ngay lập tức.
+  - *Sửa lỗi chiếu TV*: Khắc phục triệt để lỗi YouTube bằng cơ chế tọa độ overlay khớp góc nhìn camera, loại bỏ việc di chuyển thẻ iframe trong DOM (tránh reload/hỏng video player).
+
+- **Thiết Lập Mặc Định Tiết Trời Mùa Thu Phố Cổ (`autumn`)**:
+  - Đặt mùa mặc định khi vào quán là **Mùa Thu (`autumn`)**.
+  - Bầu trời và ánh nắng mang sắc vàng hổ phách ấm áp, hệ thống 150 lá vàng mùa thu 3D chao liệng và bay lượn theo làn gió dọc vỉa hè hoạt động ngay khi mở web.
+  - Huy hiệu thời tiết góc trái trên hiển thị mặc định `🍂 Thu vàng phố cổ`.

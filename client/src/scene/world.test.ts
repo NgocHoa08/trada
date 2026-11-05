@@ -75,6 +75,9 @@ describe('World Seat Switching & Single Character Guarantee', () => {
 
     world.setDrink('cafe_sua');
 
+    world.setSeason('autumn');
+    world.update(0.1, 1, 15, 0.2);
+
     world.setWeather('sunny');
     expect(world.getWeather()).toBe('sunny');
   });

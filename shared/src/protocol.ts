@@ -110,7 +110,16 @@ export type ClientMessage =
   | { t: 'drawLetter' }
   | { t: 'getGuestbook' }
   | { t: 'signGuestbook'; text: string }
-  | { t: 'xiangqiInvite'; targetSeatId: string };
+  | { t: 'xiangqiInvite'; targetSeatId: string }
+  | { t: 'gameInvite'; targetSeatId: string; gameType: 'rps' | 'xiangqi' }
+  | { t: 'gameAccept'; gameId: string }
+  | { t: 'gameDecline'; gameId: string }
+  | { t: 'chessMove'; gameId: string; from: [number, number]; to: [number, number]; piece: string }
+  /** Đi quân ở bàn cờ vỉa hè cố định (chỉ người ngồi ghế s15/s16 mới hợp lệ). */
+  | { t: 'chessTableMove'; from: [number, number]; to: [number, number] }
+  /** Người đang ngồi ghế cờ xin ván mới. */
+  | { t: 'chessTableReset' }
+  | { t: 'claimCoins'; amount: number; reason: string };
 
 export type ServerMessage =
   | {
@@ -160,6 +169,23 @@ export type ServerMessage =
   | { t: 'letterDrawn'; letter: { id: string; text: string; createdAt: number } | null }
   | { t: 'guestbook'; entries: { id: string; name: string; avatar: string; text: string; createdAt: number }[] }
   | { t: 'xiangqiInvited'; fromName: string; fromSeatId: string }
+  | { t: 'gameInviteSent'; gameId: string; gameType: 'rps' | 'xiangqi'; toName: string; toSeatId: string }
+  | { t: 'gameInvited'; gameId: string; gameType: 'rps' | 'xiangqi'; fromName: string; fromSeatId: string }
+  | { t: 'gameStarted'; gameId: string; gameType: 'rps' | 'xiangqi'; p1Name: string; p2Name: string; p1SeatId: string; p2SeatId: string }
+  | { t: 'gameDeclined'; gameId: string; byName: string }
+  | { t: 'rpsOpponentMoved'; gameId: string; opponentName: string }
+  | { t: 'chessMoved'; gameId: string; from: [number, number]; to: [number, number]; piece: string; turn: 'red' | 'black' }
+  /** Trạng thái bàn cờ vỉa hè, gửi cho mọi người (người chơi lẫn người xem). */
+  | {
+      t: 'chessTable';
+      redName: string | null;
+      blackName: string | null;
+      board: string[][];
+      turn: 'red' | 'black';
+      lastMove: { from: [number, number]; to: [number, number] } | null;
+      winner: 'red' | 'black' | null;
+    }
+
 
   | { t: 'online'; online: number }
   | { t: 'pong'; serverTime: number }

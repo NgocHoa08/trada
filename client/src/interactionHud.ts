@@ -86,8 +86,8 @@ export interface InteractionHud {
   setAdminStatus(isAdmin: boolean, message?: string): void;
   setWeather(weather: WeatherType, mode: WeatherType | 'auto'): void;
   setTvMode(mode: '3d' | 'cinema' | 'pip'): void;
+  setTvModeParent(parent: HTMLElement): void;
   getTvMode(): '3d' | 'cinema' | 'pip';
-
 }
 
 export interface HudCallbacks {
@@ -357,15 +357,21 @@ export function createInteractionHud(root: HTMLElement, cb: HudCallbacks): Inter
     if (e.target === rankModal) rankModal.hidden = true;
   });
 
-  // ---------- Dock Màn hình TV liên kết YouTube ----------
+  // ---------- Dock Màn hình TV liên kết YouTube (3D Cửa Quán, Cinema mode, Mini Pip) ----------
   const tvDock = document.createElement('div');
-  tvDock.className = 'tv-screen-dock tv-mode-pip';
+  tvDock.className = 'tv-screen-dock tv-mode-3d';
 
   const tvDockHeader = document.createElement('div');
   tvDockHeader.className = 'tv-dock-header';
 
   const tvDockActions = document.createElement('div');
   tvDockActions.className = 'tv-dock-actions';
+
+  const mode3dBtn = document.createElement('button');
+  mode3dBtn.className = 'tv-dock-btn active';
+  mode3dBtn.type = 'button';
+  mode3dBtn.textContent = '📺 TV Cửa Quán';
+  mode3dBtn.title = 'Chiếu trực tiếp lên chiếc TV 3D ở ô cửa giữa quán';
 
   const cinemaBtn = document.createElement('button');
   cinemaBtn.className = 'tv-dock-btn';
@@ -374,7 +380,7 @@ export function createInteractionHud(root: HTMLElement, cb: HudCallbacks): Inter
   cinemaBtn.title = 'Phóng to xem phim giữa màn hình';
 
   const pipBtn = document.createElement('button');
-  pipBtn.className = 'tv-dock-btn active';
+  pipBtn.className = 'tv-dock-btn';
   pipBtn.type = 'button';
   pipBtn.textContent = '📌 Góc nhỏ';
   pipBtn.title = 'Thu nhỏ dạng góc màn hình';
@@ -384,7 +390,7 @@ export function createInteractionHud(root: HTMLElement, cb: HudCallbacks): Inter
   openQueueBtn.type = 'button';
   openQueueBtn.textContent = '📋 Đặt phim/nhạc';
 
-  tvDockActions.append(cinemaBtn, pipBtn, openQueueBtn);
+  tvDockActions.append(mode3dBtn, cinemaBtn, pipBtn, openQueueBtn);
   tvDockHeader.append(tvDockActions);
 
   const playerContainer = document.createElement('div');
@@ -395,11 +401,13 @@ export function createInteractionHud(root: HTMLElement, cb: HudCallbacks): Inter
 
   tvDock.append(tvDockHeader, playerContainer);
 
-  let currentTvMode: '3d' | 'cinema' | 'pip' = 'pip';
+  let tv3dParent: HTMLElement | null = null;
+  let currentTvMode: '3d' | 'cinema' | 'pip' = '3d';
 
   function setTvMode(mode: '3d' | 'cinema' | 'pip'): void {
     currentTvMode = mode;
     tvDock.classList.remove('tv-mode-3d', 'tv-mode-cinema', 'tv-mode-pip', 'hidden');
+    mode3dBtn.classList.remove('active');
     cinemaBtn.classList.remove('active');
     pipBtn.classList.remove('active');
 
@@ -414,17 +422,26 @@ export function createInteractionHud(root: HTMLElement, cb: HudCallbacks): Inter
     if (mode === 'cinema') {
       tvDock.classList.add('tv-mode-cinema');
       cinemaBtn.classList.add('active');
-    } else {
+      if (typeof document !== 'undefined' && tvDock.parentElement !== document.body) {
+        document.body.append(tvDock);
+      }
+    } else if (mode === 'pip') {
       tvDock.classList.add('tv-mode-pip');
       pipBtn.classList.add('active');
+      if (typeof document !== 'undefined' && tvDock.parentElement !== document.body) {
+        document.body.append(tvDock);
+      }
+    } else {
+      tvDock.classList.add('tv-mode-3d');
+      mode3dBtn.classList.add('active');
+      if (tv3dParent && tvDock.parentElement !== tv3dParent) {
+        tv3dParent.append(tvDock);
+      }
     }
   }
 
-  if (typeof document !== 'undefined') {
-    document.body.append(tvDock);
-  }
-
-  cinemaBtn.addEventListener('click', () => setTvMode(currentTvMode === 'cinema' ? 'pip' : 'cinema'));
+  mode3dBtn.addEventListener('click', () => setTvMode('3d'));
+  cinemaBtn.addEventListener('click', () => setTvMode(currentTvMode === 'cinema' ? '3d' : 'cinema'));
   pipBtn.addEventListener('click', () => setTvMode('pip'));
   openQueueBtn.addEventListener('click', () => {
     radioModal.hidden = false;
@@ -513,6 +530,15 @@ export function createInteractionHud(root: HTMLElement, cb: HudCallbacks): Inter
   const viewModeRow = document.createElement('div');
   viewModeRow.className = 'tv-quick-presets';
 
+  const dock3dBtn = document.createElement('button');
+  dock3dBtn.type = 'button';
+  dock3dBtn.className = 'tv-preset-chip';
+  dock3dBtn.textContent = '📺 Chiếu lên TV cửa quán 3D';
+  dock3dBtn.addEventListener('click', () => {
+    setTvMode('3d');
+    radioModal.hidden = true;
+  });
+
   const dockCinemaBtn = document.createElement('button');
   dockCinemaBtn.type = 'button';
   dockCinemaBtn.className = 'tv-preset-chip';
@@ -531,7 +557,7 @@ export function createInteractionHud(root: HTMLElement, cb: HudCallbacks): Inter
     radioModal.hidden = true;
   });
 
-  viewModeRow.append(dockCinemaBtn, dockPipBtn);
+  viewModeRow.append(dock3dBtn, dockCinemaBtn, dockPipBtn);
 
   function playUrl(url: string): void {
     let trimmed = url.trim();
@@ -548,12 +574,12 @@ export function createInteractionHud(root: HTMLElement, cb: HudCallbacks): Inter
       return;
     }
 
-    setTvMode('pip');
+    setTvMode('3d');
     cb.onPlayDirect?.(parsed.videoId, parsed.startSec);
     cb.onQueueSong(trimmed);
 
     radioModal.hidden = true;
-    toastEl.textContent = '🎬 Đang phát video trên TV quán!';
+    toastEl.textContent = '🎬 Đang chiếu trực tiếp trên màn hình TV ở ô cửa giữa quán!';
     toastEl.classList.add('show');
     window.clearTimeout(toastTimer);
     toastTimer = window.setTimeout(() => toastEl.classList.remove('show'), 2500);
@@ -2512,6 +2538,12 @@ export function createInteractionHud(root: HTMLElement, cb: HudCallbacks): Inter
 
     tvDockElement: tvDock,
     setTvMode,
+    setTvModeParent(parent: HTMLElement) {
+      tv3dParent = parent;
+      if (currentTvMode === '3d' && tvDock.parentElement !== tv3dParent) {
+        tv3dParent.append(tvDock);
+      }
+    },
     getTvMode() {
       return currentTvMode;
     },

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { MapControls } from 'three/addons/controls/MapControls.js';
-import { CSS3DRenderer } from 'three/addons/renderers/CSS3DRenderer.js';
+import { CSS3DRenderer, CSS3DObject } from 'three/addons/renderers/CSS3DRenderer.js';
 import {
   COLOR_FILTERS,
   getRound,
@@ -475,9 +475,18 @@ const hud = createInteractionHud(app, {
     batterySaver = !batterySaver;
     return batterySaver;
   },
-
-
 });
+
+// Gắn màn hình TV liên kết YouTube vào đúng chiếc TV 3D điền ô cửa giữa quán
+const tv3dWrapper = document.createElement('div');
+tv3dWrapper.className = 'tv-3d-wrapper';
+hud.setTvModeParent(tv3dWrapper);
+
+const tv3dObj = new CSS3DObject(tv3dWrapper);
+tv3dObj.position.set(0, 1.42, -5.99);
+tv3dObj.rotation.y = 0;
+tv3dObj.scale.set(3.6 / 800, 2.025 / 450, 1);
+cssScene.add(tv3dObj);
 
 let weatherMode: WeatherType | 'auto' = 'auto';
 let lastWeatherApplied: WeatherType | null = null;

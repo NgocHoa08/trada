@@ -463,7 +463,7 @@ export function createWorld(opts: WorldOptions): World {
   const dashItems = Array.from({ length: 31 }, (_, i) => ({
     x: -45 + i * 3,
     y: ROAD_Y + 0.01,
-    z: 9.1,
+    z: 6.12,
   }));
   scene.add(
     makeInstanced(

@@ -121,14 +121,19 @@ export function createHanoiBuildings(sidewalkZ: number): THREE.Group {
         win.position.set(sx, floorY, b.depth / 2 + 0.03);
         bGroup.add(win);
 
-        // 2 cánh cửa chớp gỗ xanh mở hờ hai bên
+        // Bệ cửa sổ đá / xi măng nhô ra để người ngồi hóng mát hoặc đặt chậu cây
+        const sill = new THREE.Mesh(box(0.98, 0.08, 0.28), lambertMat(0xeee3ca));
+        sill.position.set(sx, floorY - 0.68, b.depth / 2 + 0.12);
+        bGroup.add(sill);
+
+        // 2 cánh cửa chớp gỗ xanh mở rộng hai bên
         const leftWing = new THREE.Mesh(box(0.42, 1.35, 0.03), shutterWingMat);
-        leftWing.position.set(sx - 0.46, floorY, b.depth / 2 + 0.06);
-        leftWing.rotation.y = 0.35; // mở hé ra
+        leftWing.position.set(sx - 0.56, floorY, b.depth / 2 + 0.06);
+        leftWing.rotation.y = 0.25;
 
         const rightWing = new THREE.Mesh(box(0.42, 1.35, 0.03), shutterWingMat);
-        rightWing.position.set(sx + 0.46, floorY, b.depth / 2 + 0.06);
-        rightWing.rotation.y = -0.35; // mở hé ra
+        rightWing.position.set(sx + 0.56, floorY, b.depth / 2 + 0.06);
+        rightWing.rotation.y = -0.25;
 
         // Vòm cung trang trí phía trên cửa sổ
         if (b.hasArch) {

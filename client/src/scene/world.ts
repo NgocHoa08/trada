@@ -1049,6 +1049,115 @@ export function createWorld(opts: WorldOptions): World {
     scene.add(p.character.group);
   });
 
+  // ---------- Hàng xóm ngồi bệ cửa sổ & đứng ban công tầng 2 hóng mát ----------
+  interface WindowWatcher {
+    character: Character;
+    reactions: readonly Reaction[];
+    nextReactionAt: number;
+  }
+
+  const windowWatcherDefs: {
+    avatar: (typeof AVATARS)[number];
+    name: string;
+    emoji: string;
+    mode: 'sitting' | 'standing';
+    x: number;
+    y: number;
+    z: number;
+    rotY: number;
+    reactions: readonly Reaction[];
+  }[] = [
+    {
+      avatar: { id: 'win_nam', label: 'Bà Năm', shirt: 0x8a5ca8, pants: 0x504058, skin: 0xe8bf9a, hair: 0xd8d8d8, hat: 'none' },
+      name: 'Bà Năm',
+      emoji: '🪭',
+      mode: 'sitting',
+      x: -10.7,
+      y: 3.58,
+      z: -5.94,
+      rotY: 0.18,
+      reactions: ['haha', 'unhi', 'seeds'],
+    },
+    {
+      avatar: { id: 'win_bay', label: 'Ông Bảy', shirt: 0x6f8a4a, pants: 0x4a4030, skin: 0xe0b088, hair: 0xd0d0d0, hat: 'noncoi' },
+      name: 'Ông Bảy',
+      emoji: '♟️',
+      mode: 'standing',
+      x: -7.3,
+      y: 3.84,
+      z: -5.98,
+      rotY: 0.1,
+      reactions: ['smoke', 'unhi', 'cangly'],
+    },
+    {
+      avatar: { id: 'win_mai', label: 'Cô Mai', shirt: 0xd6577a, pants: 0x3b3b52, skin: 0xf0c8a0, hair: 0x1e1612, hat: 'none' },
+      name: 'Cô Mai',
+      emoji: '🌺',
+      mode: 'standing',
+      x: -5.2,
+      y: 3.46,
+      z: -5.54,
+      rotY: 0.12,
+      reactions: ['thuong', 'om', 'haha'],
+    },
+    {
+      avatar: { id: 'win_tu', label: 'Chú Tư', shirt: 0xe0a02a, pants: 0x30343c, skin: 0xd9a77c, hair: 0x181210, hat: 'none' },
+      name: 'Chú Tư',
+      emoji: '🚬',
+      mode: 'sitting',
+      x: -1.3,
+      y: 3.58,
+      z: -5.94,
+      rotY: 0.08,
+      reactions: ['smoke', 'cangly', 'unhi'],
+    },
+    {
+      avatar: { id: 'win_bi', label: 'Bé Bi', shirt: 0x3d8fd1, pants: 0x2f3a50, skin: 0xf2cfa8, hair: 0x241a14, hat: 'cap' },
+      name: 'Bé Bi',
+      emoji: '📺',
+      mode: 'sitting',
+      x: 1.3,
+      y: 3.58,
+      z: -5.94,
+      rotY: -0.08,
+      reactions: ['haha', 'thuong', 'candy'],
+    },
+    {
+      avatar: { id: 'win_tuan', label: 'Anh Tuấn', shirt: 0x2b7a78, pants: 0x222831, skin: 0xe0b088, hair: 0x181210, hat: 'cap' },
+      name: 'Anh Tuấn',
+      emoji: '🎸',
+      mode: 'standing',
+      x: 5.4,
+      y: 3.46,
+      z: -5.54,
+      rotY: -0.15,
+      reactions: ['cangly', 'smoke', 'haha'],
+    },
+    {
+      avatar: { id: 'win_thao', label: 'Chị Thảo', shirt: 0xc8352f, pants: 0x2a2a30, skin: 0xf4d2b0, hair: 0x4a2a1a, hat: 'none' },
+      name: 'Chị Thảo',
+      emoji: '🍵',
+      mode: 'sitting',
+      x: 7.3,
+      y: 3.58,
+      z: -5.94,
+      rotY: -0.2,
+      reactions: ['thuong', 'haha', 'seeds'],
+    },
+  ];
+
+  const windowWatchers: WindowWatcher[] = windowWatcherDefs.map((w, idx) => {
+    const ch = createCharacter(w.avatar, w.name, w.emoji, w.mode);
+    ch.group.position.set(w.x, w.y, w.z);
+    ch.group.rotation.y = w.rotY;
+    scene.add(ch.group);
+    return {
+      character: ch,
+      reactions: w.reactions,
+      nextReactionAt: 2 + idx * 1.8 + Math.random() * 3,
+    };
+  });
+
   /** Ly trà đá đặt ngay dưới mặt đất vỉa hè bên cạnh ghế ngồi của khách. */
   function glassSpot(seat: (typeof SEATS)[number]): { x: number; y: number; z: number } {
     const c = Math.cos(seat.rotY);
@@ -1474,6 +1583,16 @@ export function createWorld(opts: WorldOptions): World {
           p.dir = -1;
         } else if (p.dir === -1 && p.character.group.position.x <= p.minX) {
           p.dir = 1;
+        }
+      }
+
+      // Cập nhật hàng xóm ngồi cửa sổ & đứng ban công tầng 2
+      for (const w of windowWatchers) {
+        w.character.update(dt, time);
+        if (time >= w.nextReactionAt) {
+          const pick = w.reactions[Math.floor(Math.random() * w.reactions.length)];
+          if (pick) w.character.play(pick);
+          w.nextReactionAt = time + 5 + Math.random() * 7;
         }
       }
 

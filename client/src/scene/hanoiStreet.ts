@@ -357,25 +357,26 @@ export function createHanoiSidewalkProps(): THREE.Group {
   jar.position.set(-9.8, 0.75, -2.65);
   group.add(jar);
 
-  // 5. Mái hiên di động bạt sọc xanh trắng che vỉa hè
+  // 5. Mái hiên di động bạt sọc xanh trắng che khu vực quầy trà bà Ba bên trái
+  // (không che trước ô cửa TV trung tâm và các ban công nhà phố)
   const awning = createHanoiAwning();
-  awning.position.set(0, 4.0, -5.9);
+  awning.position.set(-11.8, 3.1, -5.95);
   group.add(awning);
 
   return group;
 }
 
-/** Mái hiên di động bạt dứa / bạt sọc che mát vỉa hè quán trà đá */
+/** Mái hiên di động bạt dứa / bạt sọc che mát khu vực quầy pha trà */
 function createHanoiAwning(): THREE.Group {
   const awning = new THREE.Group();
 
-  // Khung thép gắn vào tường
+  // Khung thép gắn vào tường (rộng 4.4m, gọn phía quầy bà Ba)
   const frameMat = lambertMat(0x60656b);
-  const bar = new THREE.Mesh(box(14, 0.06, 0.06), frameMat);
+  const bar = new THREE.Mesh(box(4.4, 0.06, 0.06), frameMat);
   bar.position.set(0, 0, 0);
 
-  // Bạt hiên dốc ra phía trước vỉa hè (dài 14m, vươn ra 2.4m, dốc xuống 0.6m)
-  const awningGeo = new THREE.PlaneGeometry(14, 2.5);
+  // Bạt hiên dốc ra phía trước (dài 4.4m, vươn ra 1.5m)
+  const awningGeo = new THREE.PlaneGeometry(4.4, 1.55);
   if (typeof document === 'undefined') {
     return awning;
   }
@@ -396,18 +397,18 @@ function createHanoiAwning(): THREE.Group {
   const tex = new THREE.CanvasTexture(canvas);
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(4, 1);
+  tex.repeat.set(2, 1);
   const mat = new THREE.MeshLambertMaterial({ map: tex, side: THREE.DoubleSide });
 
   const sheet = new THREE.Mesh(awningGeo, mat);
-  sheet.position.set(0, -0.3, 1.2);
-  sheet.rotation.x = Math.PI / 2 + 0.28; // dốc xuống
+  sheet.position.set(0, -0.2, 0.75);
+  sheet.rotation.x = Math.PI / 2 + 0.26; // dốc xuống
   sheet.castShadow = true;
 
   // Diềm bạt lượn sóng rủ xuống phía trước
-  const skirtGeo = new THREE.PlaneGeometry(14, 0.35);
+  const skirtGeo = new THREE.PlaneGeometry(4.4, 0.25);
   const skirt = new THREE.Mesh(skirtGeo, mat);
-  skirt.position.set(0, -0.72, 2.38);
+  skirt.position.set(0, -0.5, 1.48);
   skirt.rotation.x = 0.05;
 
   awning.add(bar, sheet, skirt);

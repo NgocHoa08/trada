@@ -28,7 +28,7 @@ function json(res: ServerResponse, status: number, body: unknown): void {
 function handle(req: IncomingMessage, res: ServerResponse): void {
   // CORS: chỉ cho origin của client (dev qua proxy Vite nên cùng origin)
   const origin = req.headers.origin;
-  if (origin && allowedOrigins.includes(origin))
+  if (origin && (allowedOrigins.includes('*') || allowedOrigins.includes(origin)))
     res.setHeader('Access-Control-Allow-Origin', origin);
   res.setHeader('Vary', 'Origin');
 

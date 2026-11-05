@@ -10,11 +10,11 @@
   "dependencies": {
     "@tdvh/shared": "*",
     "better-sqlite3": "^13.0.3",
+    "tsx": "^4.19.0",
     "ws": "^8.22.1"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^9.6.0",
-    "@types/ws": "^8.18.2",
-    "tsx": "^4.19.0"
+    "@types/ws": "^8.18.2"
   }
 }

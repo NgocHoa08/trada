@@ -20,6 +20,6 @@ export function isOriginAllowed(
   dev: boolean,
 ): boolean {
   if (origin === undefined) return true;
-  if (allowed.includes(origin)) return true;
+  if (allowed.includes('*') || allowed.includes(origin)) return true;
   return dev && PRIVATE_HOST.test(origin);
 }

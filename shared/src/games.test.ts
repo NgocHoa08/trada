@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { determineRpsWinner, FORTUNE_STICKS, getRandomFortune, RPS_CHOICES, XIANGQI_PUZZLES } from './games';
+import { determineRpsWinner, getRandomFortune, XIANGQI_PUZZLES } from './games';
 
 describe('games (Nhóm 2: Tương tác xã hội & Minigame)', () => {
   it('xác định kết quả Oẳn tù tì chuẩn xác', () => {

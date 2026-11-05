@@ -5,13 +5,11 @@ import {
   COLOR_FILTERS,
   DAILY_STREAK_REWARDS,
   DRINKS,
-  FORTUNE_STICKS,
   getBossGreeting,
   getPatronLevel,
   getRandomFortune,
   MAP_REGIONS,
   parseYouTubeUrl,
-  PATRON_LEVELS,
   PETS,
   REACTIONS,
   RPS_CHOICES,
@@ -20,7 +18,6 @@ import {
   WEATHER_OPTIONS,
   XIANGQI_PUZZLES,
   type ColorFilter,
-  type DrinkDef,
   type LeaderboardEntry,
   type MapRegion,
   type RadioItem,
@@ -66,11 +63,13 @@ export interface InteractionHud {
   openLetterBox(): void;
   openGuestbook(): void;
   openXiangqi(): void;
-  handleRpsInvite(gameId: string, fromName: string, fromSeatId: string): void;
+  handleRpsInvite(gameId: string, fromName: string, fromSeatId?: string): void;
   handleRpsResult(myChoice: RpsChoice, opponentChoice: RpsChoice, result: 'win' | 'lose' | 'draw', opponentName: string): void;
   handleTreatAll(fromName: string): void;
   setLetterDrawn(letter: { id: string; text: string; createdAt: number } | null): void;
   setGuestbook(entries: { id: string; name: string; avatar: string; text: string; createdAt: number }[]): void;
+  openPlayerActionMenu(targetName: string, targetSeatId?: string): void;
+
   setRadioQueue(queue: RadioItem[]): void;
   setRadioPlaying(current: RadioItem | null, isPaused?: boolean): void;
   setAdminStatus(isAdmin: boolean, message?: string): void;
@@ -112,6 +111,8 @@ export interface HudCallbacks {
   onToggleFpv?: () => boolean;
   onCapturePolaroid?: () => string;
   onToggleBatterySaver?: () => boolean;
+  onXiangqiInvite?: (targetSeatId: string) => void;
+
 }
 
 export function createInteractionHud(root: HTMLElement, cb: HudCallbacks): InteractionHud {
@@ -1683,6 +1684,107 @@ export function createInteractionHud(root: HTMLElement, cb: HudCallbacks): Inter
 
 
 
+  // ---------- Modal Tương Tác Người Chơi (Bấm vào ai đó trên vỉa hè) ----------
+  const playerActionModal = document.createElement('div');
+  playerActionModal.className = 'stories-modal';
+  playerActionModal.hidden = true;
+
+  const playerActionCard = document.createElement('div');
+  playerActionCard.className = 'stories-card';
+
+  const playerActionHeader = document.createElement('div');
+  playerActionHeader.className = 'stories-header';
+  const playerActionTitle = document.createElement('h3');
+  playerActionTitle.textContent = '👤 Tương Tác Với Người Bạn Vỉa Hè';
+  const closePlayerActionBtn = document.createElement('button');
+  closePlayerActionBtn.className = 'stories-close';
+  closePlayerActionBtn.textContent = '✕';
+  playerActionHeader.append(playerActionTitle, closePlayerActionBtn);
+
+  const playerActionNotice = document.createElement('div');
+  playerActionNotice.className = 'stories-notice';
+  playerActionNotice.textContent = 'Chọn hoạt động giao lưu cùng bạn:';
+
+  const playerActionsList = document.createElement('div');
+  playerActionsList.style.display = 'flex';
+  playerActionsList.style.flexDirection = 'column';
+  playerActionsList.style.gap = '10px';
+  playerActionsList.style.marginTop = '12px';
+
+  let selectedTargetName = '';
+  let selectedTargetSeatId: string | undefined = undefined;
+
+  const btnActRps = document.createElement('button');
+  btnActRps.className = 'boss-action-btn';
+  btnActRps.style.textAlign = 'left';
+  btnActRps.style.padding = '12px 16px';
+  btnActRps.innerHTML = '<b>✊ Thách đấu Oẳn Tù Tì</b><div style="font-size: 12px; color: #ddd; margin-top: 2px;">Mời bạn một trận Kéo - Búa - Bao so tài vui vẻ</div>';
+
+  const btnActXiangqi = document.createElement('button');
+  btnActXiangqi.className = 'boss-action-btn';
+  btnActXiangqi.style.textAlign = 'left';
+  btnActXiangqi.style.padding = '12px 16px';
+  btnActXiangqi.innerHTML = '<b>♟️ Mời chơi Cờ Tướng vỉa hè</b><div style="font-size: 12px; color: #ddd; margin-top: 2px;">Gửi lời mời cùng giải các thế cờ tàn kinh điển</div>';
+
+  const btnActTreat = document.createElement('button');
+  btnActTreat.className = 'boss-action-btn';
+  btnActTreat.style.textAlign = 'left';
+  btnActTreat.style.padding = '12px 16px';
+  btnActTreat.innerHTML = '<b>🍵 Đãi ly trà đá đặc biệt (1 xu)</b><div style="font-size: 12px; color: #ddd; margin-top: 2px;">Tặng một ly trà phát sáng ấm áp tình bạn vỉa hè</div>';
+
+  const btnActWave = document.createElement('button');
+  btnActWave.className = 'boss-action-btn';
+  btnActWave.style.textAlign = 'left';
+  btnActWave.style.padding = '12px 16px';
+  btnActWave.innerHTML = '<b>🍻 Cạn ly làm quen</b><div style="font-size: 12px; color: #ddd; margin-top: 2px;">Nâng ly chúc sức khỏe gửi tới người bạn này</div>';
+
+  btnActRps.addEventListener('click', () => {
+    playerActionModal.hidden = true;
+    if (selectedTargetSeatId) {
+      cb.onRpsInvite?.(selectedTargetSeatId);
+      toastEl.textContent = `🎲 Đã gửi lời mời đấu Oẳn tù tì tới ${selectedTargetName}!`;
+      toastEl.classList.add('show');
+      window.clearTimeout(toastTimer);
+      toastTimer = window.setTimeout(() => toastEl.classList.remove('show'), 2500);
+    }
+  });
+
+  btnActXiangqi.addEventListener('click', () => {
+    playerActionModal.hidden = true;
+    if (selectedTargetSeatId) {
+      cb.onXiangqiInvite?.(selectedTargetSeatId);
+      xiangqiModal.hidden = false;
+      toastEl.textContent = `♟️ Đã gửi lời mời cờ tướng tới ${selectedTargetName}!`;
+      toastEl.classList.add('show');
+      window.clearTimeout(toastTimer);
+      toastTimer = window.setTimeout(() => toastEl.classList.remove('show'), 2500);
+    }
+  });
+
+  btnActTreat.addEventListener('click', () => {
+    playerActionModal.hidden = true;
+    if (selectedTargetSeatId) {
+      cb.onTreat(selectedTargetSeatId);
+      toastEl.textContent = `Đang đãi ${selectedTargetName} ly trà đá đặc biệt 🍵…`;
+      toastEl.classList.add('show');
+      window.clearTimeout(toastTimer);
+      toastTimer = window.setTimeout(() => toastEl.classList.remove('show'), 2000);
+    }
+  });
+
+  btnActWave.addEventListener('click', () => {
+    playerActionModal.hidden = true;
+    cb.onReact('cangly', selectedTargetSeatId);
+  });
+
+  playerActionsList.append(btnActRps, btnActXiangqi, btnActTreat, btnActWave);
+  playerActionCard.append(playerActionHeader, playerActionNotice, playerActionsList);
+  playerActionModal.append(playerActionCard);
+  closePlayerActionBtn.addEventListener('click', () => (playerActionModal.hidden = true));
+  playerActionModal.addEventListener('click', (e) => {
+    if (e.target === playerActionModal) playerActionModal.hidden = true;
+  });
+
   root.append(
     topBar,
     roundPanel,
@@ -1699,6 +1801,8 @@ export function createInteractionHud(root: HTMLElement, cb: HudCallbacks): Inter
     guestbookModal,
     xiangqiModal,
     rpsModal,
+    playerActionModal,
+
     hubShop.modal,
     hubGames.modal,
     hubProgress.modal,
@@ -1994,7 +2098,7 @@ export function createInteractionHud(root: HTMLElement, cb: HudCallbacks): Inter
     openXiangqi() {
       xiangqiModal.hidden = false;
     },
-    handleRpsInvite(gameId: string, fromName: string, _fromSeatId: string) {
+    handleRpsInvite(gameId: string, fromName: string) {
       currentRpsGameId = gameId;
       rpsResultBox.style.display = 'none';
       rpsNotice.textContent = `🎲 ${fromName} đang thách đấu bạn một trận Oẳn tù tì vỉa hè! Hãy chọn đòn:`;
@@ -2048,6 +2152,13 @@ export function createInteractionHud(root: HTMLElement, cb: HudCallbacks): Inter
         guestbookList.append(item);
       });
     },
+    openPlayerActionMenu(targetName: string, targetSeatId?: string) {
+      selectedTargetName = targetName;
+      selectedTargetSeatId = targetSeatId;
+      playerActionTitle.textContent = `👤 ${targetName} ${targetSeatId ? `(Ghế ${targetSeatId})` : ''}`;
+      playerActionModal.hidden = false;
+    },
+
 
     tvDockElement: tvDock,
     setTvMode,

@@ -10,10 +10,7 @@ import {
   SEATS,
   STORY_BUBBLE_MS,
   areNeighbors,
-  type ColorFilter,
-  type MapRegion,
   type Reaction,
-  type SeasonType,
   type ServerMessage,
   type WeatherType,
 } from '@tdvh/shared';
@@ -202,6 +199,12 @@ const gameClient = new GameClient({
         hud.setGuestbook(msg.entries);
         break;
       }
+      case 'xiangqiInvited': {
+        hud.toast(`♟️ ${msg.fromName} vừa mời bạn giải cờ tướng vỉa hè cùng họ!`);
+        hud.openXiangqi();
+        break;
+      }
+
 
     }
   },
@@ -315,6 +318,10 @@ const hud = createInteractionHud(app, {
   onRpsMove(gameId, choice) {
     gameClient.send({ t: 'rpsMove', gameId, choice });
   },
+  onXiangqiInvite(targetSeatId) {
+    gameClient.send({ t: 'xiangqiInvite', targetSeatId });
+  },
+
   onTreatAll() {
     gameClient.send({ t: 'treatAll' });
   },
@@ -505,6 +512,7 @@ function pickObject(
   clientX: number,
   clientY: number,
 ):
+  | { type: 'person'; name: string; seatId?: string }
   | { type: 'seat'; id: string; occupied: boolean }
   | { type: 'speaker' }
   | { type: 'tv' }
@@ -516,7 +524,16 @@ function pickObject(
   ndc.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
   raycaster.setFromCamera(ndc, camera);
 
-  // Kiểm tra quầy bà chủ quán
+  // 1. Kiểm tra bấm trực tiếp vào người chơi trong quán
+  const sceneHits = raycaster.intersectObjects(world.scene.children, true);
+  for (const h of sceneHits) {
+    const person = world.findPersonByObject(h.object);
+    if (person && person.name !== profile?.name) {
+      return { type: 'person', name: person.name, seatId: person.seatId ?? undefined };
+    }
+  }
+
+  // 2. Kiểm tra quầy bà chủ quán
   const bossHits = raycaster.intersectObject(world.bossStallTarget, true);
   if (bossHits.length > 0) {
     return { type: 'bossStall' };
@@ -546,6 +563,12 @@ function pickObject(
     const id = hit.object.userData.seatId;
     if (typeof id === 'string') {
       const occupied = hit.object.parent?.visible === false;
+      if (occupied) {
+        const occ = world.getPersonBySeat(id);
+        if (occ && occ.name !== profile?.name) {
+          return { type: 'person', name: occ.name, seatId: id };
+        }
+      }
       return { type: 'seat', id, occupied };
     }
   }
@@ -601,6 +624,11 @@ canvas.addEventListener('pointerup', (e) => {
 
   const res = pickObject(e.clientX, e.clientY);
   if (!res) return;
+
+  if (res.type === 'person') {
+    hud.openPlayerActionMenu(res.name, res.seatId);
+    return;
+  }
 
   if (res.type === 'bossStall') {
     hud.openBossShop();

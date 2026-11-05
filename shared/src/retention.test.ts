@@ -1,13 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
-  ACHIEVEMENTS,
   COLOR_FILTERS,
   DAILY_STREAK_REWARDS,
   DRINKS,
   getPatronLevel,
   MAP_REGIONS,
-  PATRON_LEVELS,
-  PETS,
   SEASONS,
 } from './retention';
 

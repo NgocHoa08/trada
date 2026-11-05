@@ -1020,31 +1020,147 @@ export function createWorld(opts: WorldOptions): World {
     });
   }
 
-  // ---------- Người đi bộ vãng lai trên vỉa hè Hà Nội ----------
+  // ---------- Người đi bộ vãng lai, gánh hàng rong, shipper & bán bánh dạo trên vỉa hè ----------
+  /** Tạo quang gánh tre 2 thúng hàng rong khoác trên vai */
+  function makeCarryingPole(): THREE.Group {
+    const g = new THREE.Group();
+    const bambooMat = lambertMat(0xc89d54);
+    const basketMat = lambertMat(0xa67938);
+    const ropeMat = lambertMat(0x5c4328);
+    // Đòn gánh tre dài 1.1m trên vai
+    const pole = new THREE.Mesh(box(0.03, 0.025, 1.15), bambooMat);
+    pole.position.set(0, 0.82, 0);
+    g.add(pole);
+    for (const sz of [-0.52, 0.52]) {
+      // Dây quang treo 2 đầu
+      const cord = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.36, 6), ropeMat);
+      cord.position.set(0, 0.64, sz);
+      // Thúng mây tre đan
+      const basket = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.13, 0.12, 12), basketMat);
+      basket.position.set(0, 0.45, sz);
+      // Hàng hóa cốm / hoa quả bên trong thúng
+      const goods = new THREE.Mesh(
+        new THREE.SphereGeometry(0.13, 8, 6),
+        lambertMat(sz < 0 ? 0x7cb518 : 0xf4a261),
+      );
+      goods.scale.set(1, 0.45, 1);
+      goods.position.set(0, 0.5, sz);
+      g.add(cord, basket, goods);
+    }
+    return g;
+  }
+
+  /** Tạo thùng carton giao hàng cho anh shipper đi bộ */
+  function makeDeliveryParcel(): THREE.Group {
+    const g = new THREE.Group();
+    const boxMesh = new THREE.Mesh(box(0.24, 0.2, 0.24), lambertMat(0xc98a4b));
+    boxMesh.position.set(0, 0.62, 0.2);
+    const tape = new THREE.Mesh(box(0.245, 0.03, 0.245), lambertMat(0xe8d8b5));
+    tape.position.set(0, 0.69, 0.2);
+    g.add(boxMesh, tape);
+    return g;
+  }
+
+  /** Tạo thúng bánh mì / bánh khúc nóng phủ vải giữ nhiệt */
+  function makeBreadBasket(): THREE.Group {
+    const g = new THREE.Group();
+    const basket = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.2, 0.15, 0.18, 12),
+      lambertMat(0xb07d40),
+    );
+    basket.position.set(0.18, 0.64, 0.14);
+    // Những ổ bánh mì vàng giòn nhô lên
+    for (const dx of [-0.05, 0.05]) {
+      const loaf = new THREE.Mesh(
+        new THREE.CapsuleGeometry(0.04, 0.12, 4, 8),
+        lambertMat(0xdf9135),
+      );
+      loaf.rotation.z = 0.3;
+      loaf.position.set(0.18 + dx, 0.74, 0.14);
+      g.add(loaf);
+    }
+    g.add(basket);
+    return g;
+  }
+
   const pedestrianAvatars: (typeof AVATARS)[number][] = [
     { id: 'npc_ba', label: 'Bác Ba', shirt: 0xf5f5f5, pants: 0x2a3d52, skin: 0xdeb887, hair: 0x1a1a1a, hat: 'noncoi' },
     { id: 'npc_lan', label: 'Chị Lan', shirt: 0xd98236, pants: 0x1f2421, skin: 0xf2c49b, hair: 0x1a1a1a, hat: 'nonla' },
+    { id: 'npc_sen', label: 'Cô Sen Hàng Rong', shirt: 0x8d5524, pants: 0x1f1f24, skin: 0xe6b88a, hair: 0x1a1a1a, hat: 'nonla' },
+    { id: 'npc_ship', label: 'Anh Shipper', shirt: 0x00a86b, pants: 0x1f2833, skin: 0xe0b088, hair: 0x181210, hat: 'cap' },
+    { id: 'npc_banh', label: 'Chú Tèo Bánh Mì', shirt: 0xd4a359, pants: 0x383028, skin: 0xd9a77c, hair: 0x222222, hat: 'noncoi' },
   ];
-  const pedestrians = [
+
+  interface PedestrianWalker {
+    character: Character;
+    minX: number;
+    maxX: number;
+    startX: number;
+    z: number;
+    dir: 1 | -1;
+    speed: number;
+    prop?: THREE.Group;
+  }
+
+  const carryPoleProp = makeCarryingPole();
+  const parcelProp = makeDeliveryParcel();
+  const breadProp = makeBreadBasket();
+
+  const pedestrians: PedestrianWalker[] = [
     {
       character: createCharacter(pedestrianAvatars[0]!, 'Bác Ba', '🏃', 'walking'),
-      minX: -13,
-      maxX: 13,
+      minX: -14,
+      maxX: 14,
+      startX: -12,
       z: -4.4,
-      dir: 1 as 1 | -1,
-      speed: 1.2,
+      dir: 1,
+      speed: 1.15,
     },
     {
       character: createCharacter(pedestrianAvatars[1]!, 'Chị Lan', '🌸', 'walking'),
-      minX: -13,
-      maxX: 13,
+      minX: -14,
+      maxX: 14,
+      startX: 10,
       z: 2.6,
-      dir: -1 as 1 | -1,
+      dir: -1,
       speed: 1.05,
+    },
+    {
+      character: createCharacter(pedestrianAvatars[2]!, 'Cô Sen · Hàng rong', '🧺', 'walking'),
+      minX: -15,
+      maxX: 15,
+      startX: -4,
+      z: 3.1,
+      dir: 1,
+      speed: 0.85,
+      prop: carryPoleProp,
+    },
+    {
+      character: createCharacter(pedestrianAvatars[3]!, 'Anh Shipper', '📦', 'walking'),
+      minX: -15,
+      maxX: 15,
+      startX: 6,
+      z: -4.75,
+      dir: -1,
+      speed: 1.45,
+      prop: parcelProp,
+    },
+    {
+      character: createCharacter(pedestrianAvatars[4]!, 'Chú Tèo · Bánh mì nóng', '🥖', 'walking'),
+      minX: -15,
+      maxX: 15,
+      startX: -9,
+      z: 2.15,
+      dir: 1,
+      speed: 0.92,
+      prop: breadProp,
     },
   ];
   pedestrians.forEach((p) => {
-    p.character.group.position.set(p.dir === 1 ? p.minX : p.maxX, 0, p.z);
+    if (p.prop) {
+      p.character.group.add(p.prop);
+    }
+    p.character.group.position.set(p.startX, 0, p.z);
     p.character.group.rotation.y = p.dir === 1 ? Math.PI / 2 : -Math.PI / 2;
     scene.add(p.character.group);
   });

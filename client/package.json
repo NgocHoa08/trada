@@ -1,0 +1,21 @@
+{
+  "name": "@tdvh/client",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit -p tsconfig.json && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@tdvh/shared": "*",
+    "howler": "^2.2.4",
+    "three": "^0.187.0"
+  },
+  "devDependencies": {
+    "@types/howler": "^2.2.13",
+    "@types/three": "^0.187.0",
+    "vite": "^6.0.0"
+  }
+}
